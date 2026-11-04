@@ -34,6 +34,12 @@ jobs:
         run: npm run test:e2e -- --project=desktop --grep 'focus confirmation|keeps the optical calculator'
         env:
           PLAYWRIGHT_CHANNEL: chromium
+      - name: Save browser diagnostics on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: browser-failure-diagnostics
+          path: test-results/
       - name: Configure Pages
         if: github.event_name != 'pull_request'
         id: pages

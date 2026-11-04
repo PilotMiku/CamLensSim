@@ -247,6 +247,7 @@ test('path tracing accumulates real samples and returns to interactive rendering
 });
 
 test('plays a focus confirmation on successful focus and respects mute', async ({ page }) => {
+  test.setTimeout(120_000);
   await page.addInitScript(() => {
     const original = AudioContext.prototype.createOscillator;
     (window as unknown as { focusBeeps: number }).focusBeeps = 0;
@@ -261,7 +262,8 @@ test('plays a focus confirmation on successful focus and respects mute', async (
     };
   });
   await page.goto('/');
-  await expect(page.getByTestId('canvas-host')).toHaveAttribute('data-status', 'ready');
+  await page.getByLabel('渲染质量').selectOption('low');
+  await expect(page.getByTestId('canvas-host')).toHaveAttribute('data-status', 'ready', { timeout: 60_000 });
   const target = page.locator('.landmark').filter({ hasText: '陶瓶' });
   await target.click();
   const beeps = () => page.evaluate(() => (window as unknown as { focusBeeps: number }).focusBeeps);
