@@ -48,7 +48,7 @@ describe('physical path tracing scene', () => {
     result.geometry.dispose(); geometry.dispose(); source.dispose(); material.dispose();
   });
 
-  it('converts water to a reflective refractive surface and adds a physical scattering volume', () => {
+  it('preserves physical water and the fixed sun without a second stochastic scattering volume', () => {
     const source = new THREE.Scene();
     const water = new THREE.Mesh(new THREE.PlaneGeometry(2, 2), new THREE.ShaderMaterial());
     water.name = 'alpine-lake-reflection'; source.add(water);
@@ -60,7 +60,11 @@ describe('physical path tracing scene', () => {
     expect(physicalWater.material.isMeshPhysicalMaterial).toBe(true);
     expect(physicalWater.material.ior).toBe(1.333);
     expect(physicalWater.material.transmission).toBeGreaterThan(0);
-    expect(converted.scene.getObjectByName('path-traced-atmosphere')).toBeDefined();
+    expect(converted.scene.getObjectByName('path-traced-atmosphere')).toBeUndefined();
+    const light = converted.scene.children.find(object => object instanceof THREE.DirectionalLight) as THREE.DirectionalLight;
+    expect(light).not.toBe(sun);
+    expect(light.position.equals(sun.position)).toBe(true);
+    expect(light.intensity).toBe(sun.intensity);
     expect(converted.scene.environment!.mapping).toBe(THREE.EquirectangularReflectionMapping);
     converted.dispose();
     expect(source.children).toContain(water);

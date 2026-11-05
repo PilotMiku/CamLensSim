@@ -8,7 +8,7 @@ import { ceramicGeometry, createModeling, disposeScene } from './modeling';
 import { blossomGeometry, foliageMaterial } from './botanical';
 import { makeBroadleafTree } from './helpers';
 import { applyAfternoonSky, positionAfternoonSun } from './afternoonSky';
-import { addVisibleSun } from './sunlight';
+import { addFixedBeam, addVisibleSun } from './sunlight';
 import {
   createArtworkTexture,
   createContactShadowTexture,
@@ -825,10 +825,10 @@ export const indoorScene: SceneDefinition = {
     scene.add(bounce);
 
     addVisibleSun(scene, key, 48);
+    const beam = addFixedBeam(scene, [-1.35, 2.50, -2.15], [0.8, 0.35, 1.0], 180, 8, 0.20);
     return {
       scene, sky,
-      sunlight: { sun: key, density: 0.032, distance: 15, groundHeight: 0, heightFalloff: 0.16,
-        bounds: { size: [9, 3.6, 9], center: [0, 1.8, 0.5], density: 0.018 } },
+      sunlight: { sun: key, beam, density: 0.018, distance: 15, groundHeight: 0, heightFalloff: 0.16 },
       dispose() {
         disposeScene(scene);
         sky.dispose();

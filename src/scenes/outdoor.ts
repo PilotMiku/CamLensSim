@@ -1,5 +1,5 @@
 import { applyAfternoonSky, positionAfternoonSun } from './afternoonSky';
-import { addVisibleSun } from './sunlight';
+import { addFixedBeam, addVisibleSun } from './sunlight';
 import * as THREE from 'three';
 import { OUTDOOR_POSE_LIMITS } from '../domain/camera';
 import type { SceneDefinition } from './types';
@@ -188,6 +188,7 @@ export const outdoorScene: SceneDefinition = {
     sun.shadow.radius = 1.2;
     scene.add(sun, sun.target);
     addVisibleSun(scene, sun, 360);
-    return { scene, sky, sunlight: { sun, density: 0.007, distance: 100, groundHeight: 0, heightFalloff: 0.1 }, setQuality: reflection.setQuality, dispose() { disposeScene(scene); reflection.target.dispose(); sky.dispose(); } };
+    const beam = addFixedBeam(scene, [-3.2, 7, -2], [5.5, 1.4, 9], 4000, 28, 0.19);
+    return { scene, sky, sunlight: { sun, beam, density: 0.004, distance: 100, groundHeight: 0, heightFalloff: 0.1 }, setQuality: reflection.setQuality, dispose() { disposeScene(scene); reflection.target.dispose(); sky.dispose(); } };
   },
 };

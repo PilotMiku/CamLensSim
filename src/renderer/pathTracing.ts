@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import { WebGLPathTracer, PhysicalCamera } from 'three-gpu-pathtracer';
 import { createPathTracingScene } from './pathTracingScene';
 import type { SceneInstance } from '../scenes/types';
+import { PathTracingDenoiser } from './pathTracingDenoise';
 
 export function configurePhysicalCamera(camera: PhysicalCamera, source: THREE.PerspectiveCamera,
   lens: { focalMm: number; aperture: number; focusM: number; blades: number }, dof: boolean, sensorHeight: number) {
@@ -19,7 +20,10 @@ export class PathTracingPreview {
   private readonly tracer!: WebGLPathTracer;
   private readonly physicalWorld: ReturnType<typeof createPathTracingScene>;
   private readonly camera = new PhysicalCamera();
-  constructor(renderer: THREE.WebGLRenderer, world: SceneInstance, source: THREE.PerspectiveCamera) {
+  private readonly denoiser = new PathTracingDenoiser();
+  private filteredTexture: THREE.Texture | null = null;
+  private filteredSamples = 0;
+  constructor(private readonly renderer: THREE.WebGLRenderer, world: SceneInstance, source: THREE.PerspectiveCamera) {
     if (!renderer.extensions.has('EXT_color_buffer_float')) throw new Error('设备不支持光追所需的浮点渲染');
     this.physicalWorld = createPathTracingScene(world);
     try {
@@ -27,23 +31,35 @@ export class PathTracingPreview {
     this.tracer.textureSize.set(256, 256);
     this.tracer.bounces = 6;
     this.tracer.transmissiveBounces = 8;
-    this.tracer.filterGlossyFactor = 0.5;
+    this.tracer.filterGlossyFactor = 0.75;
+    this.tracer.multipleImportanceSampling = true;
     this.tracer.tiles.set(2, 2);
     this.tracer.renderDelay = 0;
     this.tracer.minSamples = 1;
     this.tracer.fadeDuration = 0;
     this.tracer.rasterizeScene = false;
-    this.tracer.renderToCanvas = true;
+    this.tracer.renderToCanvas = false;
     configurePhysicalCamera(this.camera, source, { focalMm: 50, aperture: 1.8, focusM: 2.4, blades: 9 }, false, 24);
     this.tracer.setScene(this.physicalWorld.scene, this.camera);
-    } catch (error) { this.tracer?.dispose(); this.physicalWorld.dispose(); throw error; }
+    } catch (error) { this.tracer?.dispose(); this.denoiser.dispose(); this.physicalWorld.dispose(); throw error; }
   }
   update(source: THREE.PerspectiveCamera, lens: { focalMm: number; aperture: number; focusM: number; blades: number }, dof: boolean, low: boolean, sensorHeight: number) {
     configurePhysicalCamera(this.camera, source, lens, dof, sensorHeight);
     this.tracer.renderScale = low ? 0.45 : 0.7;
     this.tracer.updateCamera();
     this.tracer.reset();
+    this.filteredTexture = null;
+    this.filteredSamples = 0;
   }
-  render() { this.tracer.renderSample(); return Math.floor(this.tracer.samples); }
-  dispose() { this.tracer.dispose(); this.physicalWorld.dispose(); }
+  render(depth: THREE.Texture, guide: THREE.Texture) {
+    this.tracer.renderSample();
+    const samples = Math.floor(this.tracer.samples);
+    // Publish complete samples so the filter never mixes updated and stale tiles.
+    if (samples > this.filteredSamples) {
+      this.filteredTexture = this.denoiser.render(this.renderer, this.tracer.target, depth, guide, this.camera, samples);
+      this.filteredSamples = samples;
+    }
+    return { samples, texture: this.filteredTexture };
+  }
+  dispose() { this.tracer.dispose(); this.denoiser.dispose(); this.physicalWorld.dispose(); }
 }

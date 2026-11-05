@@ -232,13 +232,16 @@ test('path tracing accumulates real samples and returns to interactive rendering
   await page.getByLabel('渲染模式').selectOption('pathtraced');
   const host = page.getByTestId('canvas-host');
   await expect(host).toHaveAttribute('data-render-mode', 'pathtraced', { timeout: 120_000 });
-  await expect.poll(async () => Number(await host.getAttribute('data-path-samples')), { timeout: 120_000 }).toBeGreaterThan(1);
+  await expect.poll(async () => Number(await host.getAttribute('data-path-samples')), { timeout: 120_000 }).toBeGreaterThanOrEqual(28);
+  await expect(host).toHaveAttribute('data-path-denoised', 'true');
+  await expect(host).toHaveAttribute('data-volumetric-light', 'true');
   await page.getByTestId('image-frame').screenshot({ path: `test-results/${test.info().project.name}-pathtraced.png` });
   await page.getByLabel('光圈', { exact: true }).fill('4');
   await page.getByLabel('光圈', { exact: true }).press('Tab');
   await expect.poll(async () => Number(await host.getAttribute('data-path-samples')), { timeout: 120_000 }).toBeGreaterThan(1);
   await page.getByLabel('渲染模式').selectOption('realtime');
   await expect(host).toHaveAttribute('data-render-mode', 'realtime');
+  await expect(host).toHaveAttribute('data-path-denoised', 'false');
   await page.getByLabel('镜头预设').selectOption('fisheye-16');
   await page.getByLabel('渲染模式').selectOption('pathtraced');
   await expect(page.getByRole('status')).toContainText('当前镜头使用实时预览');

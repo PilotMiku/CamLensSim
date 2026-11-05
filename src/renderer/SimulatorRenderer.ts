@@ -1,5 +1,5 @@
 import type { PathTracingPreview } from './pathTracing';
-import { createSunlightMaterial } from './sunlight';
+import { createSunlightMaterial, sunlightComposite } from './sunlight';
 import * as THREE from 'three';
 import { clamp } from '../domain/camera';
 import type {
@@ -87,6 +87,7 @@ export class SimulatorRenderer {
   private readonly cocMaterial: THREE.ShaderMaterial;
   private readonly bokehMaterial: THREE.ShaderMaterial;
   private readonly compositeMaterial: THREE.ShaderMaterial;
+  private readonly traceCompositeMaterial: THREE.ShaderMaterial;
 
   private readonly sunlightMaterial: THREE.ShaderMaterial | null;
   private sunlightTarget: THREE.WebGLRenderTarget | null = null;
@@ -223,7 +224,21 @@ export class SimulatorRenderer {
       aspect: { value: 1.5 },
     }, true);
 
-    for (const material of [this.downsampleMaterial, this.compositeMaterial]) {
+    this.traceCompositeMaterial = postMaterial({
+      vertexShader: compositeShader.vertexShader,
+      fragmentShader: /* glsl */ `
+        varying vec2 vUv;
+        uniform sampler2D tColor;
+        ${sunlightComposite}
+        void main() {
+          gl_FragColor = vec4(litColor(vUv), 1.0);
+          #include <tonemapping_fragment>
+          #include <colorspace_fragment>
+        }
+      `,
+    }, { tColor: { value: null } }, true);
+
+    for (const material of [this.downsampleMaterial, this.compositeMaterial, this.traceCompositeMaterial]) {
       Object.assign(material.uniforms, {
         tSunlight: { value: null }, tSunDepth: { value: null },
         sunlightEnabled: { value: false }, sunlightSize: { value: new THREE.Vector2(1, 1) },
@@ -513,13 +528,22 @@ export class SimulatorRenderer {
       try {
         if (this.traceDirty) {
           this.pathPreview.update(this.camera, this.lens, this.dofEnabled, this.quality === 'low', this.sensor?.heightMm ?? 24);
+          // Cache depth, surface color and fixed-light shadows once per camera change.
+          this.renderer.setRenderTarget(sceneTarget);
+          this.renderer.render(this.world.scene, this.camera);
+          this.renderSunlight();
           this.traceDirty = false;
         }
         this.renderer.setRenderTarget(null);
-        const samples = this.pathPreview.render();
+        const { samples, texture } = this.pathPreview.render(sceneTarget.depthTexture!, sceneTarget.texture);
+        this.traceCompositeMaterial.uniforms.tColor.value = texture ?? sceneTarget.texture;
+        this.quad.material = this.traceCompositeMaterial;
+        this.renderer.setRenderTarget(null);
+        this.renderer.render(this.quadScene, this.quadCamera);
         this.host.dataset.renderMode = 'pathtraced';
         this.host.dataset.pathSamples = String(samples);
-        this.reportTrace(samples === 0 ? '光追准备中…' : `光追 · ${samples} / 128 次采样${samples < 128 ? ' · 静止后逐步清晰' : ''}`);
+        this.host.dataset.pathDenoised = String(!!texture);
+        this.reportTrace(samples === 0 ? '光追准备中…' : `光追 · ${samples} / 128 次采样 · 已降噪${samples < 128 ? ' · 静止后逐步清晰' : ''}`);
         this.onStatus('ready');
         if (samples < 128) this.invalidate();
         return;
@@ -531,6 +555,7 @@ export class SimulatorRenderer {
     }
     this.host.dataset.renderMode = 'realtime';
     this.host.dataset.pathSamples = '0';
+    this.host.dataset.pathDenoised = 'false';
     this.renderer.setRenderTarget(sceneTarget);
     this.renderer.render(this.world.scene, this.camera);
 
@@ -599,7 +624,19 @@ export class SimulatorRenderer {
       u.shadowTexel.value.set(1 / shadow.mapSize.x, 1 / shadow.mapSize.y);
       u.nearPlane.value = this.camera.near;
       u.farPlane.value = this.camera.far;
-      u.steps.value = this.quality === 'low' ? 20 : 48;
+      u.steps.value = this.quality === 'low' ? 32 : 64;
+      const beam = volume.beam;
+      u.beamEnabled.value = !!beam?.shadow.map;
+      u.tBeamShadow.value = beam?.shadow.map?.texture ?? shadow.map!.texture;
+      if (beam) {
+        u.beamPosition.value.copy(beam.position);
+        u.beamDirection.value.copy(beam.target.position).sub(beam.position).normalize();
+        u.beamColor.value.copy(beam.color).multiplyScalar(beam.intensity);
+        u.beamCone.value.set(Math.cos(beam.angle), Math.cos(beam.angle * (1 - beam.penumbra)));
+        u.beamRange.value = beam.distance;
+        u.beamShadowMatrix.value.copy(beam.shadow.matrix);
+        u.beamShadowTexel.value.set(1 / beam.shadow.mapSize.x, 1 / beam.shadow.mapSize.y);
+      }
       u.fisheye.value = this.lens.fisheye;
       u.focalMm.value = this.lens.focalMm;
       if (this.sensor) u.sensorSize.value.set(this.sensor.widthMm, this.sensor.heightMm);
@@ -607,7 +644,9 @@ export class SimulatorRenderer {
       this.renderer.setRenderTarget(this.sunlightTarget);
       this.renderer.render(this.quadScene, this.quadCamera);
     }
-    for (const pass of [this.downsampleMaterial, this.compositeMaterial]) {
+    this.host.dataset.volumetricLight = String(enabled);
+    this.host.dataset.fixedLightBeam = String(enabled && !!volume?.beam?.shadow.map);
+    for (const pass of [this.downsampleMaterial, this.compositeMaterial, this.traceCompositeMaterial]) {
       pass.uniforms.sunlightEnabled.value = enabled;
       pass.uniforms.tSunlight.value = this.sunlightTarget?.texture ?? this.sceneTarget!.texture;
       pass.uniforms.tSunDepth.value = this.sceneTarget!.depthTexture;
@@ -694,6 +733,7 @@ export class SimulatorRenderer {
     this.cocMaterial.dispose();
     this.bokehMaterial.dispose();
     this.compositeMaterial.dispose();
+    this.traceCompositeMaterial.dispose();
     this.sunlightMaterial?.dispose();
     this.quad.geometry.dispose();
     this.renderer.dispose();

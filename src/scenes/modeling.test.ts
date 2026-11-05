@@ -116,6 +116,18 @@ describe('photographic scene construction', () => {
         expect(instance.scene.children).toContain(volume.sun);
         expect(volume.density).toBeGreaterThan(0);
         expect(volume.distance).toBeLessThanOrEqual(definition.cameraFar);
+        const beam = volume.beam!;
+        expect(beam).toBeInstanceOf(THREE.SpotLight);
+        expect(beam.parent).toBe(instance.scene);
+        expect(beam.target.parent).toBe(instance.scene);
+        expect(beam.castShadow).toBe(true);
+        expect(beam.position.distanceTo(beam.target.position)).toBeLessThan(beam.distance);
+        expect(beam.angle).toBeGreaterThan(0);
+        const physical = createPathTracingScene(instance);
+        const physicalBeam = physical.scene.getObjectByName(beam.name) as THREE.SpotLight;
+        expect(physicalBeam.position.equals(beam.position)).toBe(true);
+        expect(physicalBeam.target.position.equals(beam.target.position)).toBe(true);
+        physical.dispose();
         const visual = instance.scene.getObjectByName('visible-sun')!;
         const sunDirection = volume.sun.position.clone().sub(volume.sun.target.position).normalize();
         const visualDirection = visual.position.clone().sub(volume.sun.target.position).normalize();
@@ -132,7 +144,7 @@ describe('photographic scene construction', () => {
     }
   });
 
-  it('indoor: traces the window, enclosure and atmospheric volume under the same afternoon sky', () => {
+  it('indoor: traces the window and enclosure while sharing the fixed sunlight for scattering', () => {
     const instance = SCENES[0].create({ renderer: {} as THREE.WebGLRenderer });
     instance.scene.updateMatrixWorld(true);
     const window = instance.scene.getObjectByName('atelier-window')!;
@@ -149,9 +161,10 @@ describe('photographic scene construction', () => {
     expect(glass.material.transmission).toBe(1);
     expect((glass.material as THREE.MeshPhysicalMaterial & { castShadow: boolean }).castShadow).toBe(false);
     expect(physical.scene.getObjectByName('raster-contact-shadow')).toBeUndefined();
-    const atmosphere = physical.scene.getObjectByName('path-traced-atmosphere') as THREE.Mesh;
-    expect(atmosphere).toBeDefined();
-    expect(atmosphere.position.y).toBe(1.8);
+    expect(physical.scene.getObjectByName('path-traced-atmosphere')).toBeUndefined();
+    const sun = physical.scene.getObjectByName(instance.sunlight.sun.name) as THREE.DirectionalLight;
+    expect(sun.position.equals(instance.sunlight.sun.position)).toBe(true);
+    expect(sun.target.position.equals(instance.sunlight.sun.target.position)).toBe(true);
     expect(physical.scene.background).toBe(physical.scene.environment);
     expect(physical.scene.environment).not.toBe(instance.scene.environment);
     expect(physical.scene.environment!.image).toBe(instance.sky!.environment.image);

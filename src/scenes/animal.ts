@@ -1,5 +1,5 @@
 import { applyAfternoonSky, positionAfternoonSun } from './afternoonSky';
-import { addVisibleSun } from './sunlight';
+import { addFixedBeam, addVisibleSun } from './sunlight';
 import * as THREE from 'three';
 import { DEFAULT_POSE_LIMITS } from '../domain/camera';
 import type { SceneDefinition } from './types';
@@ -112,6 +112,7 @@ export const animalScene: SceneDefinition = {
     rim.position.set(2, 3, 3);
     scene.add(key, key.target, rim);
     addVisibleSun(scene, key, 28);
-    return { scene, sky, sunlight: { sun: key, density: 0.025, distance: 20, groundHeight: 1, heightFalloff: 0.22 }, dispose() { disposeScene(scene); sky.dispose(); } };
+    const beam = addFixedBeam(scene, [-0.55, 2.65, -0.25], [0.65, 1.7, -0.25], 300, 6, 0.16);
+    return { scene, sky, sunlight: { sun: key, beam, density: 0.018, distance: 20, groundHeight: 1, heightFalloff: 0.22 }, dispose() { disposeScene(scene); sky.dispose(); } };
   },
 };

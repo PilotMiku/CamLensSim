@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { FogVolumeMaterial, GradientEquirectTexture } from 'three-gpu-pathtracer';
+import { GradientEquirectTexture } from 'three-gpu-pathtracer';
 import type { SceneInstance } from '../scenes/types';
 
 /** Bake every instance into BVH geometry, including per-instance tint and mirrored winding. */
@@ -102,19 +102,8 @@ export function createPathTracingScene(world: SceneInstance) {
     mesh.matrix.copy(object.matrixWorld); mesh.matrixAutoUpdate = false;
     scene.add(mesh);
   });
-  if (world.sunlight) {
-    const outdoor = world.sunlight.distance > 50;
-    const bounds = world.sunlight.bounds;
-    const size = bounds?.size ?? [outdoor ? 160 : 28, outdoor ? 60 : 18, outdoor ? 200 : 38];
-    const geometry = new THREE.BoxGeometry(size[0], size[1], size[2]);
-    const material = new FogVolumeMaterial({ color: '#fff5de' });
-    material.density = bounds?.density ?? (outdoor ? 0.003 : 0.007);
-    const fog = new THREE.Mesh(geometry, material);
-    fog.name = 'path-traced-atmosphere';
-    const center = bounds?.center ?? [0, outdoor ? 20 : 6, outdoor ? -40 : -5];
-    fog.position.set(center[0], center[1], center[2]);
-    scene.add(fog); ownedGeometry.add(geometry); ownedMaterials.add(material);
-  }
+  // Single scattering is integrated by the shared shadow-tested sunlight pass.
+  // A stochastic fog volume here would add low-sample noise and double the medium.
   return { scene, dispose() {
     ownedGeometry.forEach(g => g.dispose()); ownedMaterials.forEach(m => m.dispose()); environment.dispose(); scene.clear();
   } };

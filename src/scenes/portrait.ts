@@ -1,5 +1,5 @@
 import { applyAfternoonSky, positionAfternoonSun } from './afternoonSky';
-import { addVisibleSun } from './sunlight';
+import { addFixedBeam, addVisibleSun } from './sunlight';
 import * as THREE from 'three';
 import { DEFAULT_POSE_LIMITS } from '../domain/camera';
 import type { SceneDefinition } from './types';
@@ -107,6 +107,7 @@ export const portraitScene: SceneDefinition = {
     rim.target.position.set(0, 1.35, 0);
     scene.add(sun, sun.target, bounce, key, key.target, rim, rim.target);
     addVisibleSun(scene, sun, 48);
-    return { scene, sky, sunlight: { sun, density: 0.026, distance: 18, groundHeight: 0, heightFalloff: 0.28 }, dispose() { disposeScene(scene); sky.dispose(); } };
+    const beam = addFixedBeam(scene, [-0.95, 2.4, -0.4], [1.6, 0.25, -0.3], 720, 8, 0.18);
+    return { scene, sky, sunlight: { sun, beam, density: 0.016, distance: 18, groundHeight: 0, heightFalloff: 0.28 }, dispose() { disposeScene(scene); sky.dispose(); } };
   },
 };

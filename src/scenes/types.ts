@@ -10,18 +10,19 @@ export interface SceneLandmark {
 }
 
 export interface SunlightVolume {
+  /** Fixed in world space; shared by surface illumination, shadows and light shafts. */
   sun: import('three').DirectionalLight;
+  /** Optional stationary spotlight for a clearly bounded shaft of light. */
+  beam?: import('three').SpotLight;
   density: number;
   distance: number;
   groundHeight: number;
   heightFalloff: number;
-  /** Physical medium bounds used by path tracing; size and centre in metres. */
-  bounds?: { size: [number, number, number]; center: [number, number, number]; density: number };
 }
 
 export interface SceneInstance {
   sky?: ReturnType<typeof import('./afternoonSky').createAfternoonSky>;
-  sunlight?: SunlightVolume;
+  sunlight: SunlightVolume;
   scene: Scene;
   dispose: () => void;
   setQuality?: (quality: RenderQuality) => void;
