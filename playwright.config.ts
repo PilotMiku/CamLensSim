@@ -3,6 +3,8 @@ import { defineConfig, devices } from '@playwright/test';
 export default defineConfig({
   testDir: './e2e',
   fullyParallel: false,
+  // Each browser owns a full BVH and HDR path-tracing buffers; share the GPU serially.
+  workers: 1,
   timeout: 45_000,
   expect: { timeout: 15_000 },
   use: {

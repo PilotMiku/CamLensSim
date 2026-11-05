@@ -40,7 +40,16 @@ export class PathTracingDenoiser {
         vec2 backward = depth - vec2(depthAt(vUv - vec2(texel.x, 0.0)), depthAt(vUv - vec2(0.0, texel.y)));
         vec2 gradient = vec2(abs(forward.x) < abs(backward.x) ? forward.x : backward.x,
           abs(forward.y) < abs(backward.y) ? forward.y : backward.y);
-        float sigma = colorSigma * (0.12 + denoiseLuminance(center));
+        float mean = 0.0, secondMoment = 0.0;
+        for (int y = -1; y <= 1; y++) for (int x = -1; x <= 1; x++) {
+          vec2 uv = vUv + vec2(float(x), float(y)) * texel * stepSize;
+          float value = denoiseLuminance(texture2D(tInput, uv).rgb);
+          mean += value / 9.0; secondMoment += value * value / 9.0;
+        }
+        // Indirectly lit walls can alternate between dark and bright samples.
+        // Estimate local noise rather than treating each dark sample as an edge.
+        float deviation = sqrt(max(secondMoment - mean * mean, 0.0));
+        float sigma = max(colorSigma * (0.12 + denoiseLuminance(center)), deviation * 1.8);
         vec3 sum = vec3(0.0); float weights = 0.0;
         for (int y = -2; y <= 2; y++) for (int x = -2; x <= 2; x++) {
           vec2 offset = vec2(float(x), float(y)) * stepSize;

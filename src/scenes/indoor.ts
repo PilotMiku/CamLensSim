@@ -8,7 +8,8 @@ import { ceramicGeometry, createModeling, disposeScene } from './modeling';
 import { blossomGeometry, foliageMaterial } from './botanical';
 import { makeBroadleafTree } from './helpers';
 import { applyAfternoonSky, positionAfternoonSun } from './afternoonSky';
-import { addFixedBeam, addVisibleSun } from './sunlight';
+import { addVisibleSun } from './sunlight';
+import { addPendantLamp } from './fixtures';
 import {
   createArtworkTexture,
   createContactShadowTexture,
@@ -811,21 +812,9 @@ export const indoorScene: SceneDefinition = {
     key.shadow.radius = 1.5;
     scene.add(key, key.target);
 
-    const rim = new THREE.SpotLight('#cfe2ff', 16, 14, 0.85, 0.95, 1.2);
-    rim.position.set(2.4, 3.4, -2.6);
-    rim.target.position.set(0, 1.2, -0.2);
-    scene.add(rim, rim.target);
-
-    const fill = new THREE.DirectionalLight('#dce6ed', 0.8);
-    fill.position.set(3.6, 2.2, 3.2);
-    scene.add(fill);
-
-    const bounce = new THREE.PointLight('#ffd9b4', 1.0, 5, 1.6);
-    bounce.position.set(0.2, 0.35, 1.35);
-    scene.add(bounce);
-
     addVisibleSun(scene, key, 48);
-    const beam = addFixedBeam(scene, [-1.35, 2.50, -2.15], [0.8, 0.35, 1.0], 180, 8, 0.20);
+    // The canopy touches the ceiling's underside at y = 3.60 m.
+    const beam = addPendantLamp(scene, [-0.8, 3.6, -1.0], 1.4);
     return {
       scene, sky,
       sunlight: { sun: key, beam, density: 0.018, distance: 15, groundHeight: 0, heightFalloff: 0.16 },

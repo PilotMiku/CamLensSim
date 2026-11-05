@@ -1,5 +1,6 @@
 import { applyAfternoonSky, positionAfternoonSun } from './afternoonSky';
-import { addFixedBeam, addVisibleSun } from './sunlight';
+import { addVisibleSun } from './sunlight';
+import { addStreetLamp } from './fixtures';
 import * as THREE from 'three';
 import { DEFAULT_POSE_LIMITS } from '../domain/camera';
 import type { SceneDefinition } from './types';
@@ -95,19 +96,11 @@ export const portraitScene: SceneDefinition = {
     sun.shadow.bias = -0.00015;
     sun.shadow.normalBias = 0.0025;
     sun.shadow.radius = 1.5;
-    const bounce = new THREE.DirectionalLight('#e8e4dc', 0.7);
-    bounce.position.set(1.5, 1.8, 3);
-    // Soft front key models the face and gives the hair its highlight.
-    const key = new THREE.DirectionalLight('#fff2e0', 0.85);
-    key.position.set(-2.2, 3.2, 4.2);
-    key.target.position.set(0, 1.15, 0);
-    // Warm rim separates the black hair and shoulders from the trees.
-    const rim = new THREE.DirectionalLight('#ffe7c8', 0.6);
-    rim.position.set(2.7, 3.4, -3.4);
-    rim.target.position.set(0, 1.35, 0);
-    scene.add(sun, sun.target, bounce, key, key.target, rim, rim.target);
+    scene.add(sun, sun.target);
     addVisibleSun(scene, sun, 48);
-    const beam = addFixedBeam(scene, [-0.95, 2.4, -0.4], [1.6, 0.25, -0.3], 720, 8, 0.18);
+    // A park lantern on the right verge, behind the subject and clear of her outline.
+    const beam = addStreetLamp(scene, [1.85, -0.01, -3.2], 2.65, [-0.65, 0, 0.1],
+      [0.6, 0.03, -1.5], 220, 11);
     return { scene, sky, sunlight: { sun, beam, density: 0.016, distance: 18, groundHeight: 0, heightFalloff: 0.28 }, dispose() { disposeScene(scene); sky.dispose(); } };
   },
 };

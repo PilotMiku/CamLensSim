@@ -1,5 +1,6 @@
 import { applyAfternoonSky, positionAfternoonSun } from './afternoonSky';
-import { addFixedBeam, addVisibleSun } from './sunlight';
+import { addVisibleSun } from './sunlight';
+import { addStreetLamp } from './fixtures';
 import * as THREE from 'three';
 import { DEFAULT_POSE_LIMITS } from '../domain/camera';
 import type { SceneDefinition } from './types';
@@ -96,6 +97,9 @@ export const animalScene: SceneDefinition = {
     moss.castShadow = moss.receiveShadow = true;
     scene.add(moss);
     mesh(new THREE.PlaneGeometry(60, 60).rotateX(-Math.PI / 2), new THREE.MeshStandardMaterial({ color: '#495a34', roughness: 1 }), [0, -0.2, 0]);
+    // A walking trail behind the perch gives the park light a grounded purpose.
+    mesh(new THREE.PlaneGeometry(1.2, 18).rotateX(-Math.PI / 2),
+      new THREE.MeshStandardMaterial({ color: '#8a8067', roughness: 1 }), [1.1, -0.192, -7]).name = 'woodland-walking-trail';
     scene.add(new THREE.HemisphereLight('#d6eaff', '#70613c', 0.7));
     const key = new THREE.DirectionalLight('#fff0d2', 4.1);
     key.name = 'woodland-sunlight';
@@ -108,11 +112,10 @@ export const animalScene: SceneDefinition = {
     key.shadow.normalBias = 0.0015;
     key.shadow.bias = -0.00015;
     key.shadow.radius = 1.0;
-    const rim = new THREE.DirectionalLight('#d6eaff', 0.45);
-    rim.position.set(2, 3, 3);
-    scene.add(key, key.target, rim);
+    scene.add(key, key.target);
     addVisibleSun(scene, key, 28);
-    const beam = addFixedBeam(scene, [-0.55, 2.65, -0.25], [0.65, 1.7, -0.25], 300, 6, 0.16);
+    const beam = addStreetLamp(scene, [0.2, -0.2, -2.4], 3.0, [0.65, 0, 0],
+      [1.1, -0.18, -1.0], 200, 11);
     return { scene, sky, sunlight: { sun: key, beam, density: 0.018, distance: 20, groundHeight: 1, heightFalloff: 0.22 }, dispose() { disposeScene(scene); sky.dispose(); } };
   },
 };

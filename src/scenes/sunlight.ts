@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 
-/** A stationary photographic key: the same cone illuminates surfaces and airborne dust. */
+/** Physical lamp source shared by surface illumination, shadows and airborne dust. */
 export function addFixedBeam(scene: THREE.Scene, position: [number, number, number],
   target: [number, number, number], intensity: number, distance: number, angle = 0.22) {
   const light = new THREE.SpotLight('#ffe4ba', intensity, distance, angle, 0.45, 2);

@@ -12,7 +12,7 @@ export interface SceneLandmark {
 export interface SunlightVolume {
   /** Fixed in world space; shared by surface illumination, shadows and light shafts. */
   sun: import('three').DirectionalLight;
-  /** Optional stationary spotlight for a clearly bounded shaft of light. */
+  /** Spotlight belonging to a street lamp or ceiling pendant, independent of the sun. */
   beam?: import('three').SpotLight;
   density: number;
   distance: number;

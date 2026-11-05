@@ -127,6 +127,19 @@ describe('photographic scene construction', () => {
         const physicalBeam = physical.scene.getObjectByName(beam.name) as THREE.SpotLight;
         expect(physicalBeam.position.equals(beam.position)).toBe(true);
         expect(physicalBeam.target.position.equals(beam.target.position)).toBe(true);
+        const physicalSun = physical.scene.getObjectByName(volume.sun.name) as THREE.DirectionalLight;
+        expect(physicalSun).toBeInstanceOf(THREE.DirectionalLight);
+        expect(physicalSun.position.equals(volume.sun.position)).toBe(true);
+        expect(physical.scene.children.filter(object => object instanceof THREE.Light)).toHaveLength(2);
+        const fixture = instance.scene.getObjectByName(beam.userData.fixture)!;
+        expect(fixture).toBeInstanceOf(THREE.Group);
+        expect(fixture.userData.fixtureType).toBe(definition.id === 'indoor' ? 'pendant' : 'street');
+        for (const part of ['shade', 'emitter', definition.id === 'indoor' ? 'cable' : 'pole']) {
+          expect(physical.scene.getObjectByName(`${fixture.name}-${part}`)).toBeInstanceOf(THREE.Mesh);
+        }
+        if (definition.id === 'indoor') expect(fixture.position.y).toBe(3.6);
+        else expect(fixture.position.y).toBeCloseTo(definition.id === 'outdoor'
+          ? terrainHeight(fixture.position.x, fixture.position.z) : definition.id === 'animal' ? -0.2 : -0.01);
         physical.dispose();
         const visual = instance.scene.getObjectByName('visible-sun')!;
         const sunDirection = volume.sun.position.clone().sub(volume.sun.target.position).normalize();
