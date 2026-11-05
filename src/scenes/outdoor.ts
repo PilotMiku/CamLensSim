@@ -180,7 +180,7 @@ export const outdoorScene: SceneDefinition = {
     sun.name = 'alpine-sunlight';
     sun.position.set(-30, 36, 12);
     sun.target.position.set(0, 0, -12);
-    positionAfternoonSun(sun, 80);
+    positionAfternoonSun(sun, 80, sky.sunDirection);
     sun.castShadow = true;
     sun.shadow.mapSize.set(2048, 2048);
     Object.assign(sun.shadow.camera, { left: -40, right: 40, top: 40, bottom: -40, near: 1, far: 220 });

@@ -143,6 +143,8 @@ describe('photographic scene construction', () => {
         physical.dispose();
         const visual = instance.scene.getObjectByName('visible-sun')!;
         const sunDirection = volume.sun.position.clone().sub(volume.sun.target.position).normalize();
+        expect(sunDirection.distanceTo(instance.sky!.sunDirection)).toBeLessThan(1e-6);
+        if (definition.id !== 'indoor') expect(sunDirection.z).toBeGreaterThan(0);
         const visualDirection = visual.position.clone().sub(volume.sun.target.position).normalize();
         expect(sunDirection.distanceTo(visualDirection)).toBeLessThan(1e-6);
         const ray = new THREE.Raycaster(volume.sun.target.position, visualDirection);

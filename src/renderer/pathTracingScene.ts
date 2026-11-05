@@ -71,12 +71,15 @@ export function createPathTracingScene(world: SceneInstance) {
       scene.add(light); return;
     }
     if (!(object instanceof THREE.Mesh) || object.userData.pathTracingExclude) return;
+    // The sun is an infinitely distant light, never an opaque disc in the BVH.
+    // castShadow=false is insufficient here: the tracer still intersects that
+    // surface on specular paths. Its visible disc belongs to the HDR sky instead.
+    if (object.parent?.name === 'visible-sun') return;
     const list = Array.isArray(object.material) ? object.material : [object.material];
     if (list.some(m => m instanceof THREE.MeshBasicMaterial && m.side === THREE.BackSide && !m.depthWrite)) return;
     const water = object.name === 'alpine-lake-reflection';
     // Shader sky domes are replaced by the environment; screen glow has no physical surface.
     if (!water && list.some(m => !(m instanceof THREE.MeshStandardMaterial) && !(m instanceof THREE.MeshBasicMaterial))) return;
-    if (object.parent?.name === 'visible-sun' && list.some(m => m.transparent)) return;
     const materials = list.map(source => {
       let material: THREE.MeshStandardMaterial;
       if (water) {
@@ -90,8 +93,7 @@ export function createPathTracingScene(world: SceneInstance) {
           emissive: basic.color, emissiveMap: basic.map, side: basic.side,
           transparent: basic.transparent, opacity: basic.opacity, roughness: 1 });
       }
-      // The visible solar disc represents the source itself, so it must not block its directional light.
-      if (object.parent?.name === 'visible-sun' || object.userData.pathTracingShadowTransparent) Object.assign(material, { castShadow: false });
+      if (object.userData.pathTracingShadowTransparent) Object.assign(material, { castShadow: false });
       material.vertexColors ||= object instanceof THREE.InstancedMesh;
       ownedMaterials.add(material); return material;
     });

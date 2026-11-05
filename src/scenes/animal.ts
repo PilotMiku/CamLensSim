@@ -105,7 +105,7 @@ export const animalScene: SceneDefinition = {
     key.name = 'woodland-sunlight';
     key.position.set(-3.5, 6, 2.5);
     key.target.position.set(0, 2, 0);
-    positionAfternoonSun(key, 10);
+    positionAfternoonSun(key, 10, sky.sunDirection);
     key.castShadow = true;
     key.shadow.mapSize.set(2048, 2048);
     Object.assign(key.shadow.camera, { left: -5, right: 5, top: 5, bottom: -5, near: 0.5, far: 30 });

@@ -4,7 +4,11 @@ export type AfternoonScene = 'indoor' | 'outdoor' | 'portrait' | 'animal';
 
 /** An art-directed clear afternoon, around 16:00; sun altitude is about 28 degrees. */
 export const AFTERNOON_SUN_DIRECTION = new THREE.Vector3(-0.40, 0.46, -0.79).normalize();
+/** Outdoor sets face the afternoon sun from the side/front instead of backlighting the fixtures. */
+export const OUTDOOR_SUN_DIRECTION = new THREE.Vector3(-0.40, 0.46, 0.79).normalize();
 const CLOUD_WHITE = new THREE.Color('#fff5df');
+const SOLAR_RADIANCE = new THREE.Color(12, 9.8, 6.8);
+export const SOLAR_ANGULAR_RADIUS = 0.00465;
 const PALETTES: Record<AfternoonScene, [string, string, string]> = {
   indoor: ['#367fc1', '#d8e9f3', '#908575'],
   outdoor: ['#2679c5', '#c1def3', '#81856a'],
@@ -13,12 +17,13 @@ const PALETTES: Record<AfternoonScene, [string, string, string]> = {
 };
 
 /** A continuous direction sampler is shared by all six cube faces and the HDR environment. */
-export function afternoonSkyColor(direction: THREE.Vector3, palette: readonly [THREE.Color, THREE.Color, THREE.Color], target: THREE.Color) {
+export function afternoonSkyColor(direction: THREE.Vector3, palette: readonly [THREE.Color, THREE.Color, THREE.Color], target: THREE.Color,
+  angularFootprint = 0, sunDirection = AFTERNOON_SUN_DIRECTION) {
   const [top, horizon, ground] = palette;
   const altitude = direction.y;
   if (altitude >= 0) target.copy(horizon).lerp(top, Math.pow(altitude, 0.48));
   else target.copy(horizon).lerp(ground, Math.min(1, -altitude * 3));
-  const sunDot = Math.max(0, direction.dot(AFTERNOON_SUN_DIRECTION));
+  const sunDot = Math.max(0, direction.dot(sunDirection));
   const glow = Math.pow(sunDot, 32) * 0.30 + Math.pow(sunDot, 180) * 0.12;
   target.r += glow; target.g += glow * 0.72; target.b += glow * 0.35;
   // Sparse high cirrus; most of the sky remains clear blue.
@@ -26,10 +31,18 @@ export function afternoonSkyColor(direction: THREE.Vector3, palette: readonly [T
   const streak = Math.sin(direction.x * 24 + direction.z * 11 + Math.sin(direction.z * 19) * 1.2);
   const cloud = THREE.MathUtils.smoothstep(streak, 0.80, 1) * band * 0.13;
   target.lerp(CLOUD_WHITE, cloud);
+  // A filtered solar disc in the environment stays visible in glossy reflections
+  // without a foreground mesh that can block the independent directional light.
+  const radius = SOLAR_ANGULAR_RADIUS;
+  const filter = Math.max(0.0005, angularFootprint * 0.5);
+  const angle = Math.acos(THREE.MathUtils.clamp(sunDot, 0, 1));
+  const disc = 1 - THREE.MathUtils.smoothstep(angle, Math.max(0, radius - filter), radius + filter);
+  target.r += SOLAR_RADIANCE.r * disc; target.g += SOLAR_RADIANCE.g * disc; target.b += SOLAR_RADIANCE.b * disc;
   return target;
 }
 
 export function createAfternoonSky(id: AfternoonScene, faceSize = 128) {
+  const sunDirection = id === 'indoor' ? AFTERNOON_SUN_DIRECTION : OUTDOOR_SUN_DIRECTION;
   const palette = PALETTES[id].map(hex => new THREE.Color(hex)) as [THREE.Color, THREE.Color, THREE.Color];
   const direction = new THREE.Vector3(), color = new THREE.Color();
   const faces: THREE.DataTexture[] = [];
@@ -49,7 +62,7 @@ export function createAfternoonSky(id: AfternoonScene, faceSize = 128) {
       faceDirection(face, (x + 0.5) / faceSize * 2 - 1, (y + 0.5) / faceSize * 2 - 1);
       // Three.js flips X for image-based CubeTexture backgrounds.
       direction.x *= -1;
-      afternoonSkyColor(direction, palette, color).convertLinearToSRGB();
+      afternoonSkyColor(direction, palette, color, 2 / faceSize, sunDirection).convertLinearToSRGB();
       const i = (y * faceSize + x) * 4;
       data[i] = Math.round(Math.min(color.r, 1) * 255); data[i + 1] = Math.round(Math.min(color.g, 1) * 255);
       data[i + 2] = Math.round(Math.min(color.b, 1) * 255); data[i + 3] = 255;
@@ -69,7 +82,7 @@ export function createAfternoonSky(id: AfternoonScene, faceSize = 128) {
   for (let y = 0; y < height; y++) for (let x = 0; x < width; x++) {
     const phi = ((x + 0.5) / width - 0.5) * Math.PI * 2, latitude = ((y + 0.5) / height - 0.5) * Math.PI;
     direction.set(Math.cos(latitude) * Math.cos(phi), Math.sin(latitude), Math.cos(latitude) * Math.sin(phi));
-    afternoonSkyColor(direction, palette, color);
+    afternoonSkyColor(direction, palette, color, Math.PI * 2 / width, sunDirection);
     const i = (y * width + x) * 4;
     pixels[i] = color.r; pixels[i + 1] = color.g; pixels[i + 2] = color.b; pixels[i + 3] = 1;
   }
@@ -80,7 +93,7 @@ export function createAfternoonSky(id: AfternoonScene, faceSize = 128) {
   environment.needsUpdate = true;
   environment.name = `${id}-clear-afternoon-environment`;
   return { skybox, environment, weather: 'clear' as const, time: '16:00' as const,
-    sunDirection: AFTERNOON_SUN_DIRECTION.clone(),
+    sunDirection: sunDirection.clone(),
     dispose() { skybox.dispose(); faces.forEach(face => face.dispose()); environment.dispose(); },
   };
 }
@@ -89,11 +102,13 @@ export function applyAfternoonSky(scene: THREE.Scene, id: AfternoonScene) {
   const sky = createAfternoonSky(id);
   scene.background = sky.skybox;
   scene.environment = sky.environment;
-  scene.environmentIntensity = id === 'indoor' ? 0.30 : 0.50;
+  // Outdoor shade receives the full sky. Halving it made lamps under trees read
+  // almost black in the physical preview, which has no raster hemisphere fill.
+  scene.environmentIntensity = id === 'indoor' ? 0.30 : 1.0;
   return sky;
 }
 
-export function positionAfternoonSun(sun: THREE.DirectionalLight, distance: number) {
+export function positionAfternoonSun(sun: THREE.DirectionalLight, distance: number, direction = AFTERNOON_SUN_DIRECTION) {
   sun.color.set('#ffecd0');
-  sun.position.copy(sun.target.position).addScaledVector(AFTERNOON_SUN_DIRECTION, distance);
+  sun.position.copy(sun.target.position).addScaledVector(direction, distance);
 }

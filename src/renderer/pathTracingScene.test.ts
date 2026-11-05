@@ -3,8 +3,37 @@ import { describe, expect, it } from 'vitest';
 import { PhysicalCamera, PathTracingSceneGenerator } from 'three-gpu-pathtracer';
 import { configurePhysicalCamera } from './pathTracing';
 import { bakeInstances, createPathTracingScene } from './pathTracingScene';
+import { addVisibleSun } from '../scenes/sunlight';
+import { applyAfternoonSky, afternoonSkyColor } from '../scenes/afternoonSky';
 
 describe('physical path tracing scene', () => {
+  it('keeps the solar visual out of every BVH ray while preserving the independent directional source', () => {
+    const scene = new THREE.Scene();
+    const sky = applyAfternoonSky(scene, 'outdoor');
+    const sun = new THREE.DirectionalLight('#ffecd0', 4);
+    sun.name = 'test-sun'; sun.position.copy(sky.sunDirection).multiplyScalar(80);
+    scene.add(sun, sun.target); addVisibleSun(scene, sun, 360);
+    const ground = new THREE.Mesh(new THREE.PlaneGeometry(5, 5).rotateX(-Math.PI / 2), new THREE.MeshStandardMaterial());
+    ground.position.y = -1; scene.add(ground);
+    const physical = createPathTracingScene({ scene, sky, sunlight: { sun, density: 0.004,
+      distance: 100, groundHeight: 0, heightFalloff: 0.1 }, dispose() {} });
+    physical.scene.updateMatrixWorld(true);
+    const generated = new PathTracingSceneGenerator(physical.scene).generate();
+    expect(generated.lights).toHaveLength(1);
+    expect(generated.lights[0].name).toBe(sun.name);
+    // This includes specular paths, for which material.castShadow=false is not enough.
+    expect(generated.bvh.raycastFirst(new THREE.Ray(new THREE.Vector3(), sky.sunDirection), THREE.DoubleSide)).toBeNull();
+    const palette = ['#2679c5', '#c1def3', '#81856a'].map(value => new THREE.Color(value)) as [THREE.Color, THREE.Color, THREE.Color];
+    const solarColor = afternoonSkyColor(sky.sunDirection, palette, new THREE.Color(), 0, sky.sunDirection);
+    expect(solarColor.r).toBeGreaterThan(10);
+    expect(scene.environmentIntensity).toBe(1);
+    expect(physical.scene.environmentIntensity).toBe(scene.environmentIntensity);
+    generated.geometry.dispose(); physical.dispose(); ground.geometry.dispose(); ground.material.dispose(); sky.dispose();
+    scene.getObjectByName('visible-sun')!.traverse(object => {
+      if (object instanceof THREE.Mesh) { object.geometry.dispose(); object.material.dispose(); }
+    });
+  });
+
   it('preserves the projection and supplies finite physical lens uniforms after copying a regular camera', () => {
     const source = new THREE.PerspectiveCamera(30, 1.5, 0.04, 65);
     source.position.set(0, 1, 4); source.updateMatrixWorld();

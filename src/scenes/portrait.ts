@@ -89,7 +89,7 @@ export const portraitScene: SceneDefinition = {
     sun.name = 'portrait-sunlight';
     sun.position.set(-3.2, 5.5, -2);
     sun.target.position.set(0, 1.3, 0);
-    positionAfternoonSun(sun, 10);
+    positionAfternoonSun(sun, 10, sky.sunDirection);
     sun.castShadow = true;
     sun.shadow.mapSize.set(2048, 2048);
     Object.assign(sun.shadow.camera, { left: -4, right: 4, top: 4, bottom: -4, near: 0.5, far: 30 });
