@@ -1,5 +1,7 @@
 import * as THREE from 'three';
 import { createSolarBackground } from './solarBackground';
+import { createSolarDisc } from './solarDisc';
+import { SOLAR_ANGULAR_RADIUS } from '../optics/sun';
 
 /** Physical lamp source shared by surface illumination, shadows and airborne dust. */
 export function addFixedBeam(scene: THREE.Scene, position: [number, number, number],
@@ -15,14 +17,23 @@ export function addFixedBeam(scene: THREE.Scene, position: [number, number, numb
   return light;
 }
 
-/** The visible disc and glow share the actual directional light's direction. */
+/** Independent solar model, lighting/shadow source and sampled path emitter share one sun. */
 export function addVisibleSun(scene: THREE.Scene, sun: THREE.DirectionalLight, distance: number) {
-  const direction = sun.position.clone().sub(sun.target.position).normalize();
+  sun.updateWorldMatrix(true, false); sun.target.updateWorldMatrix(true, false);
+  const target = new THREE.Vector3().setFromMatrixPosition(sun.target.matrixWorld);
+  const direction = new THREE.Vector3().setFromMatrixPosition(sun.matrixWorld).sub(target).normalize();
+  if (direction.lengthSq() === 0) direction.set(0, 1, 0);
   const group = new THREE.Group();
   group.name = 'visible-sun';
-  group.position.copy(direction).multiplyScalar(distance).add(sun.target.position);
-  group.lookAt(sun.target.position);
-  const background = createSolarBackground(scene, sun);
+  group.userData.lightSourceId = sun.uuid;
+  group.userData.angularRadius = SOLAR_ANGULAR_RADIUS;
+  group.position.copy(direction).multiplyScalar(distance).add(target);
+  group.lookAt(target);
+  // Keep sky rendering separate; the independently rendered disc owns all direct
+  // solar appearance. The lighting environment never contains the solar disk.
+  const background = createSolarBackground(scene, sun, false);
   if (background) group.add(background);
+  group.add(createSolarDisc(sun));
   scene.add(group);
+  return group;
 }

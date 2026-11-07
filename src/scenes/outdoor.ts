@@ -188,10 +188,10 @@ export const outdoorScene: SceneDefinition = {
     sun.shadow.bias = -0.0002;
     sun.shadow.radius = 1.2;
     scene.add(sun, sun.target);
-    addVisibleSun(scene, sun, 360);
+    const solarModel = addVisibleSun(scene, sun, 360);
     // Stand on the left verge of the existing lakeside track, aimed down over it.
     const beam = addStreetLamp(scene, [3.6, terrainHeight(3.6, 5), 5], 4.2, [0.75, 0, 0.1],
       [4.9, terrainHeight(4.9, 7.5) + 0.04, 7.5], 950, 18);
-    return { scene, sky, sunlight: { sun, beam, density: 0.004, distance: 100, groundHeight: 0, heightFalloff: 0.1 }, setQuality: reflection.setQuality, dispose() { disposeScene(scene); reflection.target.dispose(); sky.dispose(); } };
+    return { scene, sky, sunlight: { sun, model: solarModel, beam, density: 0.004, distance: 100, groundHeight: 0, heightFalloff: 0.1 }, setQuality: reflection.setQuality, dispose() { disposeScene(scene); reflection.target.dispose(); sky.dispose(); } };
   },
 };

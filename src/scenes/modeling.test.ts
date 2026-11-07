@@ -115,6 +115,11 @@ describe('photographic scene construction', () => {
         expect(volume).toBeDefined();
         expect(volume.sun.castShadow).toBe(true);
         expect(instance.scene.children).toContain(volume.sun);
+        expect(volume.model).toBe(instance.scene.getObjectByName('visible-sun'));
+        expect(volume.model!.userData.lightSourceId).toBe(volume.sun.uuid);
+        const solarDisc = volume.model!.getObjectByName('solar-disc') as THREE.Mesh;
+        expect(solarDisc).toBeInstanceOf(THREE.Mesh);
+        expect(solarDisc.userData.pathTracingExclude).toBe(true);
         expect(volume.density).toBeGreaterThan(0);
         expect(volume.distance).toBeLessThanOrEqual(definition.cameraFar);
         const beam = volume.beam!;
@@ -125,6 +130,7 @@ describe('photographic scene construction', () => {
         expect(beam.position.distanceTo(beam.target.position)).toBeLessThan(beam.distance);
         expect(beam.angle).toBeGreaterThan(0);
         const physical = createPathTracingScene(instance);
+        expect(physical.scene.getObjectByName('solar-disc')).toBeUndefined();
         const physicalBeam = physical.scene.getObjectByName(beam.name) as THREE.SpotLight;
         expect(physicalBeam.position.equals(beam.position)).toBe(true);
         expect(physicalBeam.target.position.equals(beam.target.position)).toBe(true);

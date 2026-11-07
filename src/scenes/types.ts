@@ -12,6 +12,8 @@ export interface SceneLandmark {
 export interface SunlightVolume {
   /** Fixed in world space; shared by surface illumination, shadows and light shafts. */
   sun: import('three').DirectionalLight;
+  /** Independent visible solar model linked to this source (not a second energy source). */
+  model?: import('three').Group;
   /** Spotlight belonging to a street lamp or ceiling pendant, independent of the sun. */
   beam?: import('three').SpotLight;
   density: number;

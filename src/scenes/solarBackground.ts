@@ -4,13 +4,14 @@ import { SOLAR_ANGULAR_RADIUS, solarRadiance } from '../optics/sun';
 /** Camera-centred analytic sky: solar direction has no room-scale parallax.
  * xyww puts it at the far plane, independent of the camera clipping distance.
  */
-export function createSolarBackground(scene: THREE.Scene, sun: THREE.DirectionalLight) {
+export function createSolarBackground(scene: THREE.Scene, sun: THREE.DirectionalLight, includeSolarDisc = true) {
   const sky = scene.environment;
   if (!(sky instanceof THREE.DataTexture)) return null;
   const material = new THREE.ShaderMaterial({
     side: THREE.BackSide, depthWrite: false, fog: false, toneMapped: false,
     uniforms: { tSky: { value: sky }, solarDirection: { value: new THREE.Vector3() },
       solarRadiance: { value: new THREE.Color() }, solarRadius: { value: SOLAR_ANGULAR_RADIUS },
+      solarDiscEnabled: { value: includeSolarDisc },
       fisheye: { value: false }, sensorSize: { value: new THREE.Vector2(36, 24) }, focalMm: { value: 16 },
       cameraWorld: { value: new THREE.Matrix4() }, viewport: { value: new THREE.Vector4(0, 0, 1, 1) } },
     vertexShader: /* glsl */ `
@@ -26,7 +27,7 @@ export function createSolarBackground(scene: THREE.Scene, sun: THREE.Directional
       uniform sampler2D tSky;
       uniform vec3 solarDirection, solarRadiance;
       uniform float solarRadius, focalMm;
-      uniform bool fisheye;
+      uniform bool fisheye, solarDiscEnabled;
       uniform vec2 sensorSize;
       uniform mat4 cameraWorld;
       uniform vec4 viewport;
@@ -40,12 +41,14 @@ export function createSolarBackground(scene: THREE.Scene, sun: THREE.Directional
         }
         vec2 uv = vec2(atan(d.z, d.x) / 6.28318530718 + 0.5, asin(clamp(d.y, -1.0, 1.0)) / 3.14159265359 + 0.5);
         vec3 base = texture2D(tSky, uv).rgb;
-        float angle = acos(clamp(dot(d, solarDirection), -1.0, 1.0));
-        float width = max(fwidth(angle), 0.00001);
-        float disc = 1.0 - smoothstep(solarRadius - width * 0.5, solarRadius + width * 0.5, angle);
-        if (all(lessThanEqual(solarRadiance, vec3(0.0)))) disc = 0.0;
+        vec3 color = base;
+        if (solarDiscEnabled && any(greaterThan(solarRadiance, vec3(0.0)))) {
+          float angle = acos(clamp(dot(d, solarDirection), -1.0, 1.0));
+          float width = max(fwidth(angle), 0.00001);
+          float disc = 1.0 - smoothstep(solarRadius - width * 0.5, solarRadius + width * 0.5, angle);
+          color = mix(base, solarRadiance, disc);
+        }
         // This is a display proxy; FP16 raster HDR cannot store radiance above 65,504.
-        vec3 color = mix(base, solarRadiance, disc);
         gl_FragColor = vec4(min(color, vec3(65000.0)), 1.0);
       }
     `,

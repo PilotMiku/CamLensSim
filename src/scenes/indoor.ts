@@ -812,12 +812,12 @@ export const indoorScene: SceneDefinition = {
     key.shadow.radius = 1.5;
     scene.add(key, key.target);
 
-    addVisibleSun(scene, key, 48);
+    const solarModel = addVisibleSun(scene, key, 48);
     // The canopy touches the ceiling's underside at y = 3.60 m.
     const beam = addPendantLamp(scene, [-0.8, 3.6, -1.0], 1.4);
     return {
       scene, sky,
-      sunlight: { sun: key, beam, density: 0.018, distance: 15, groundHeight: 0, heightFalloff: 0.16 },
+      sunlight: { sun: key, model: solarModel, beam, density: 0.018, distance: 15, groundHeight: 0, heightFalloff: 0.16 },
       dispose() {
         disposeScene(scene);
         sky.dispose();

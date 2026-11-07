@@ -113,9 +113,9 @@ export const animalScene: SceneDefinition = {
     key.shadow.bias = -0.00015;
     key.shadow.radius = 1.0;
     scene.add(key, key.target);
-    addVisibleSun(scene, key, 28);
+    const solarModel = addVisibleSun(scene, key, 28);
     const beam = addStreetLamp(scene, [0.2, -0.2, -2.4], 3.0, [0.65, 0, 0],
       [1.1, -0.18, -1.0], 200, 11);
-    return { scene, sky, sunlight: { sun: key, beam, density: 0.018, distance: 20, groundHeight: 1, heightFalloff: 0.22 }, dispose() { disposeScene(scene); sky.dispose(); } };
+    return { scene, sky, sunlight: { sun: key, model: solarModel, beam, density: 0.018, distance: 20, groundHeight: 1, heightFalloff: 0.22 }, dispose() { disposeScene(scene); sky.dispose(); } };
   },
 };

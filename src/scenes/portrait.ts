@@ -97,10 +97,10 @@ export const portraitScene: SceneDefinition = {
     sun.shadow.normalBias = 0.0025;
     sun.shadow.radius = 1.5;
     scene.add(sun, sun.target);
-    addVisibleSun(scene, sun, 48);
+    const solarModel = addVisibleSun(scene, sun, 48);
     // A park lantern on the right verge, behind the subject and clear of her outline.
     const beam = addStreetLamp(scene, [1.85, -0.01, -3.2], 2.65, [-0.65, 0, 0.1],
       [0.6, 0.03, -1.5], 220, 11);
-    return { scene, sky, sunlight: { sun, beam, density: 0.016, distance: 18, groundHeight: 0, heightFalloff: 0.28 }, dispose() { disposeScene(scene); sky.dispose(); } };
+    return { scene, sky, sunlight: { sun, model: solarModel, beam, density: 0.016, distance: 18, groundHeight: 0, heightFalloff: 0.28 }, dispose() { disposeScene(scene); sky.dispose(); } };
   },
 };
