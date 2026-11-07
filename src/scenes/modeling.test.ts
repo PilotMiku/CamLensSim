@@ -180,7 +180,9 @@ describe('photographic scene construction', () => {
     const sun = physical.scene.getObjectByName(instance.sunlight.sun.name) as THREE.DirectionalLight;
     expect(sun.position.equals(instance.sunlight.sun.position)).toBe(true);
     expect(sun.target.position.equals(instance.sunlight.sun.target.position)).toBe(true);
-    expect(physical.scene.background).toBe(physical.scene.environment);
+    // The physical scene keeps the sky's own cube texture as its background while the
+    // lighting environment is the owned clone, so the interactive scene can be disposed safely.
+    expect(physical.scene.background).toBe(instance.sky!.environment);
     expect(physical.scene.environment).not.toBe(instance.scene.environment);
     expect(physical.scene.environment!.image).toBe(instance.sky!.environment.image);
     physical.scene.updateMatrixWorld(true);

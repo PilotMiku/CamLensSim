@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { GradientEquirectTexture } from 'three-gpu-pathtracer';
+import { bakeEnvironmentFill } from './pathTracingEnvironment';
 import type { SceneInstance } from '../scenes/types';
 
 /** Bake every instance into BVH geometry, including per-instance tint and mirrored winding. */
@@ -56,19 +57,32 @@ export function createPathTracingScene(world: SceneInstance) {
   if (environment instanceof GradientEquirectTexture) {
     environment.topColor.set('#9cbdd7'); environment.bottomColor.set('#6a7056'); environment.update();
   }
-  scene.environment = environment;
-  scene.environmentIntensity = world.scene.environmentIntensity;
-  scene.background = world.sky ? environment : world.scene.background instanceof THREE.Color ? world.scene.background.clone() : new THREE.Color('#b6c8d2');
   world.scene.updateMatrixWorld(true);
+  const hasFill = bakeEnvironmentFill(world.scene, environment);
+  scene.environment = environment;
+  scene.environmentIntensity = hasFill && world.scene.environmentIntensity === 0 ? 1 : world.scene.environmentIntensity;
+  scene.background = world.sky ? world.sky.environment : world.scene.background instanceof THREE.Color ? world.scene.background.clone() : new THREE.Color('#b6c8d2');
+  const lights = new Set<THREE.Light>();
+  const addLight = (object: THREE.Light) => {
+    if (lights.has(object)) return;
+    lights.add(object);
+    object.updateWorldMatrix(true, false);
+    const light = object.clone(); light.position.setFromMatrixPosition(object.matrixWorld);
+    if (light instanceof THREE.DirectionalLight || light instanceof THREE.SpotLight) {
+      const source = object as THREE.DirectionalLight;
+      // A light target can be detached or nested outside the source scene.
+      source.target.updateWorldMatrix(true, false);
+      light.target = new THREE.Object3D(); light.target.position.setFromMatrixPosition(source.target.matrixWorld);
+      scene.add(light.target);
+    }
+    scene.add(light);
+  };
+  // The same authoritative sun drives surface lighting and the volume pass.
+  // Do not depend on a scene traversal to discover this source.
+  if (world.sunlight.sun.visible) addLight(world.sunlight.sun);
   world.scene.traverseVisible(object => {
     if (object instanceof THREE.Light && !(object instanceof THREE.HemisphereLight) && !(object instanceof THREE.AmbientLight)) {
-      const light = object.clone(); light.position.setFromMatrixPosition(object.matrixWorld);
-      if (light instanceof THREE.DirectionalLight || light instanceof THREE.SpotLight) {
-        const source = object as THREE.DirectionalLight;
-        light.target = new THREE.Object3D(); light.target.position.setFromMatrixPosition(source.target.matrixWorld);
-        scene.add(light.target);
-      }
-      scene.add(light); return;
+      addLight(object); return;
     }
     if (!(object instanceof THREE.Mesh) || object.userData.pathTracingExclude) return;
     // The sun is an infinitely distant light, never an opaque disc in the BVH.

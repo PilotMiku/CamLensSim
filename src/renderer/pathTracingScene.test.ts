@@ -34,6 +34,23 @@ describe('physical path tracing scene', () => {
     });
   });
 
+  it('registers the authoritative sun once and updates a detached target in world space', () => {
+    const scene = new THREE.Scene();
+    const sun = new THREE.DirectionalLight(0xffffff, 4);
+    sun.name = 'detached-sun'; sun.position.set(-4, 6, 8);
+    const parent = new THREE.Group(); parent.position.set(2, 1, -3);
+    parent.add(sun.target); sun.target.position.set(0, 1, 0);
+    const physical = createPathTracingScene({ scene, sunlight: { sun, density: 0,
+      distance: 20, groundHeight: 0, heightFalloff: 0 }, dispose() {} });
+    physical.scene.updateMatrixWorld(true);
+    const traced = physical.scene.getObjectByName(sun.name) as THREE.DirectionalLight;
+    expect(traced.intensity).toBe(4);
+    expect(traced.target.position.toArray()).toEqual([2, 2, -3]);
+    expect(traced.position.clone().sub(traced.target.position).normalize().toArray())
+      .toEqual(sun.position.clone().sub(new THREE.Vector3(2, 2, -3)).normalize().toArray());
+    physical.dispose();
+  });
+
   it('preserves the projection and supplies finite physical lens uniforms after copying a regular camera', () => {
     const source = new THREE.PerspectiveCamera(30, 1.5, 0.04, 65);
     source.position.set(0, 1, 4); source.updateMatrixWorld();
