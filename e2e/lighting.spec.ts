@@ -1,4 +1,6 @@
-import { expect, test } from '@playwright/test';
+import { expect, test } from './fixtures';
+
+test.use({ renderWidth: process.env.CI ? 320 : undefined });
 
 for (const distribution of ['uniform', 'indirect'] as const) {
   test(`denoises 28-sample ${distribution} HDR noise while preserving a foreground silhouette`, async ({ page }) => {
@@ -86,15 +88,15 @@ test('keeps fixed shadow-tested light shafts active in every scene', async ({ pa
   expect(errors).toEqual([]);
 });
 
-test('traces sunlight and physical lamp fixtures in all four scenes', async ({ page }) => {
-  test.setTimeout(240_000);
-  const errors: string[] = [];
-  page.on('pageerror', error => errors.push(error.message));
-  page.on('console', message => { if (message.type() === 'error') errors.push(message.text()); });
-  await page.goto('/');
-  await page.getByLabel('渲染质量').selectOption('smooth');
-  const host = page.getByTestId('canvas-host');
-  for (const id of ['indoor', 'outdoor', 'portrait', 'animal']) {
+for (const id of ['indoor', 'outdoor', 'portrait', 'animal']) {
+  test(`traces sunlight and physical lamp fixtures in ${id}`, async ({ page }) => {
+    test.setTimeout(180_000);
+    const errors: string[] = [];
+    page.on('pageerror', error => errors.push(error.message));
+    page.on('console', message => { if (message.type() === 'error') errors.push(message.text()); });
+    await page.goto('/');
+    await page.getByLabel('渲染质量').selectOption('smooth');
+    const host = page.getByTestId('canvas-host');
     await page.getByLabel('选择场景').selectOption(id);
     await expect(host).toHaveAttribute('data-status', 'ready');
     await page.getByLabel('渲染模式').selectOption('pathtraced');
@@ -105,9 +107,9 @@ test('traces sunlight and physical lamp fixtures in all four scenes', async ({ p
     await page.getByTestId('image-frame').screenshot({ path: `test-results/${test.info().project.name}-${id}-fixtures-pathtraced.png` });
     await page.getByLabel('渲染模式').selectOption('realtime');
     await expect(host).toHaveAttribute('data-render-mode', 'realtime');
-  }
-  expect(errors).toEqual([]);
-});
+    expect(errors).toEqual([]);
+  });
+}
 
 test('shows the pendant suspended from the indoor ceiling when looking up', async ({ page }) => {
   await page.goto('/');

@@ -279,7 +279,7 @@ export function ControlPanel() {
         <div className="exposure-fields">
           <label>
             ISO
-            <select value={p.iso} onChange={(event) => set({ iso: Number(event.target.value) })}>
+            <select aria-label="ISO" value={p.iso} onChange={(event) => set({ iso: Number(event.target.value) })}>
               {[50, 100, 200, 400, 800, 1600, 3200, 6400, 12800, 25600].map((value) => (
                 <option key={value} value={value}>
                   {value}
@@ -290,6 +290,7 @@ export function ControlPanel() {
           <label>
             快门
             <select
+              aria-label="快门"
               value={p.shutterSeconds}
               onChange={(event) => set({ shutterSeconds: Number(event.target.value) })}
             >

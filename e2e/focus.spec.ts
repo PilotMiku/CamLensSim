@@ -26,7 +26,8 @@ test('supports far-distance and infinity focus without invalid diagram styles or
   await focus.fill('∞');
   await focus.press('Tab');
   await expect(focus).toHaveValue('∞');
-  await page.getByRole('button', { name: '复位机位', exact: true }).click();
+  await page.getByRole('complementary', { name: '相机参数' })
+    .getByRole('button', { name: '复位机位', exact: true }).click();
   await expect(focus).not.toHaveValue('∞');
   await page.locator('canvas').screenshot();
   expect(errors).toEqual([]);

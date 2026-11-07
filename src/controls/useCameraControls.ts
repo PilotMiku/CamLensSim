@@ -2,19 +2,17 @@ import { useCallback, useEffect, useMemo, useRef } from 'react';
 import type { Dispatch } from 'react';
 import {
   clamp,
-  clampPose,
   rotateCamera,
   translateCamera,
   type PoseLimits,
 } from '../domain/camera';
 import type { CameraPose } from '../domain/types';
 import type { SimulatorAction } from '../state/simulator';
+import { advanceCameraMotion } from './cameraMotion';
 
 const BASE_SPEED = 1.55;
 const RISE_SPEED = 1.1;
 const TURN_RATE = 68;
-const ACCELERATION = 11;
-const MAX_DT = 0.05;
 
 const MOVEMENT_KEYS = new Set([
   'KeyW',
@@ -99,8 +97,10 @@ export function useCameraControls(
 
   const tick = useCallback((now: number) => {
     if (!running.current) return;
-    const dt = clamp((now - last.current) / 1000, 0.001, MAX_DT);
-    last.current = now;
+    // RAF timestamps can precede an input event flushed during the same frame.
+    const time = Math.max(now, last.current);
+    const dt = (time - last.current) / 1000;
+    last.current = time;
     const pressed = keys.current;
     const stickState = stick.current;
     const fast = pressed.has('ShiftLeft') || pressed.has('ShiftRight');
@@ -140,18 +140,23 @@ export function useCameraControls(
       1,
     );
 
-    const blend = 1 - Math.exp(-ACCELERATION * dt);
-    const target = { forward: forward * speed, strafe: strafe * speed, rise: rise * RISE_SPEED };
-    velocity.current.forward += (target.forward - velocity.current.forward) * blend;
-    velocity.current.strafe += (target.strafe - velocity.current.strafe) * blend;
-    velocity.current.rise += (target.rise - velocity.current.rise) * blend;
+    const result = advanceCameraMotion(poseRef.current, velocity.current,
+      { forward: forward * speed, strafe: strafe * speed, rise: rise * RISE_SPEED,
+        yaw: yaw * turn, pitch: pitch * turn }, dt, limitsRef.current);
+    velocity.current = result.velocity;
 
-    const moving =
-      Math.abs(velocity.current.forward) +
-        Math.abs(velocity.current.strafe) +
-        Math.abs(velocity.current.rise) >
-      0.008;
+    const residualSpeed = Math.abs(velocity.current.forward) + Math.abs(velocity.current.strafe) + Math.abs(velocity.current.rise);
+    const moving = residualSpeed > 0.008 || Math.abs(forward) + Math.abs(strafe) + Math.abs(rise) > 0;
     const turning = Math.abs(yaw) + Math.abs(pitch) > 0.001;
+
+    // A delayed final frame may integrate the entire stopping distance even
+    // though its ending velocity is already below the sleep threshold.
+    const next = result.pose;
+    if (!samePose(poseRef.current, next)) {
+      poseRef.current = next;
+      remember(next);
+      dispatchRef.current({ type: 'pose', patch: next });
+    }
 
     if (!moving && !turning) {
       velocity.current.forward = 0;
@@ -162,21 +167,16 @@ export function useCameraControls(
       return;
     }
 
-    const current = poseRef.current;
-    let next = translateCamera(
-      current,
-      velocity.current.forward * dt,
-      velocity.current.strafe * dt,
-      velocity.current.rise * dt,
-      limitsRef.current,
-    );
-    next = rotateCamera(next, yaw * turn * dt, pitch * turn * dt, limitsRef.current);
-    next = clampPose(next, limitsRef.current);
-    poseRef.current = next;
-    remember(next);
-    dispatchRef.current({ type: 'pose', patch: next });
     frame.current = requestAnimationFrame(tick);
   }, []);
+
+  // Account for the old input up to this event before changing it. A slow render
+  // can otherwise consume the whole key/stick hold between animation callbacks.
+  const flush = useCallback(() => {
+    if (!running.current) return;
+    cancelAnimationFrame(frame.current);
+    tick(performance.now());
+  }, [tick]);
 
   const wake = useCallback(() => {
     if (running.current) return;
@@ -211,24 +211,37 @@ export function useCameraControls(
       if (event.metaKey || event.ctrlKey) return;
       if (isTypingTarget(event.target)) return;
       if (!MOVEMENT_KEYS.has(event.code)) return;
+      flush();
       keys.current.add(event.code);
       if (event.code.startsWith('Arrow') || event.code === 'Space') event.preventDefault();
       wake();
     };
     const handleKeyUp = (event: KeyboardEvent) => {
+      if (!MOVEMENT_KEYS.has(event.code)) return;
+      flush();
       keys.current.delete(event.code);
     };
-    const handleBlur = () => keys.current.clear();
+    const handleBlur = () => {
+      running.current = false;
+      cancelAnimationFrame(frame.current);
+      keys.current.clear();
+      stick.current = { moveX: 0, moveY: 0, lookX: 0, lookY: 0, rise: 0 };
+      velocity.current = { forward: 0, strafe: 0, rise: 0 };
+      recent.current = [];
+    };
+    const handleVisibility = () => { if (document.hidden) handleBlur(); };
     window.addEventListener('keydown', handleKeyDown);
     window.addEventListener('keyup', handleKeyUp);
     window.addEventListener('blur', handleBlur);
+    document.addEventListener('visibilitychange', handleVisibility);
     return () => {
       window.removeEventListener('keydown', handleKeyDown);
       window.removeEventListener('keyup', handleKeyUp);
       window.removeEventListener('blur', handleBlur);
+      document.removeEventListener('visibilitychange', handleVisibility);
       keys.current.clear();
     };
-  }, [enabled, wake]);
+  }, [enabled, wake, flush]);
 
   useEffect(
     () => () => {
@@ -240,28 +253,31 @@ export function useCameraControls(
 
   const setMove = useCallback(
     (x: number, y: number) => {
+      flush();
       stick.current.moveX = clamp(x, -1, 1);
       stick.current.moveY = clamp(y, -1, 1);
       if (x !== 0 || y !== 0) wake();
     },
-    [wake],
+    [wake, flush],
   );
 
   const setLook = useCallback(
     (x: number, y: number) => {
+      flush();
       stick.current.lookX = clamp(x, -1, 1);
       stick.current.lookY = clamp(y, -1, 1);
       if (x !== 0 || y !== 0) wake();
     },
-    [wake],
+    [wake, flush],
   );
 
   const setRise = useCallback(
     (value: number) => {
+      flush();
       stick.current.rise = clamp(value, -1, 1);
       if (value !== 0) wake();
     },
-    [wake],
+    [wake, flush],
   );
 
   const nudge = useCallback(

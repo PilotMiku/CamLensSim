@@ -1,4 +1,6 @@
-import { expect, test } from '@playwright/test';
+import { expect, test } from './fixtures';
+
+test.use({ renderWidth: process.env.CI ? 320 : undefined });
 
 const poseValue = async (page: import('@playwright/test').Page, key: string) =>
   Number(await page.getByTestId('camera-pose').getAttribute(`data-${key}`));
@@ -100,7 +102,8 @@ test('moves and turns the free camera with the keyboard while focus tracks the s
   await expect.poll(async () => poseValue(page, 'yaw')).toBeLessThan(yawBeforeDrag - 5);
 
   // Reset the rig back to the default framing.
-  await page.getByRole('button', { name: '复位机位' }).first().click();
+  await page.getByRole('complementary', { name: '相机参数' })
+    .getByRole('button', { name: '复位机位', exact: true }).click();
   await expect.poll(async () => poseValue(page, 'z')).toBeGreaterThan(2.8);
   await expect.poll(async () => poseValue(page, 'yaw')).toBeGreaterThan(-1);
 });
@@ -199,13 +202,13 @@ test('uses the four reference categories and opens their source images separatel
   expect(errors).toEqual([]);
 });
 
-test('afternoon sunlight renders in all scenes across quality, depth-of-field and fisheye modes', async ({ page }) => {
-  test.setTimeout(90_000);
-  const errors: string[] = [];
-  page.on('pageerror', error => errors.push(error.message));
-  page.on('console', message => { if (message.type() === 'error') errors.push(message.text()); });
-  await page.goto('/');
-  for (const id of ['indoor', 'outdoor', 'portrait', 'animal']) {
+for (const id of ['indoor', 'outdoor', 'portrait', 'animal']) {
+  test(`afternoon sunlight renders ${id} across quality, depth-of-field and fisheye modes`, async ({ page }) => {
+    test.setTimeout(120_000);
+    const errors: string[] = [];
+    page.on('pageerror', error => errors.push(error.message));
+    page.on('console', message => { if (message.type() === 'error') errors.push(message.text()); });
+    await page.goto('/');
     await page.getByLabel('选择场景').selectOption(id);
     await expect(page.locator('.scene-subtitle')).toContainText('CLEAR AFTERNOON 16:00');
     await expect(page.getByTestId('canvas-host')).toHaveAttribute('data-status', 'ready');
@@ -213,16 +216,17 @@ test('afternoon sunlight renders in all scenes across quality, depth-of-field an
       await page.getByLabel('渲染质量').selectOption(quality);
       await page.getByRole('button', { name: '景深预览' }).click();
       await page.evaluate(() => new Promise<void>(resolve => requestAnimationFrame(() => requestAnimationFrame(() => resolve()))));
-      await page.getByTestId('image-frame').screenshot({ path: `test-results/${test.info().project.name}-sunlight-${id}-${quality}.png` });
+      await page.getByTestId('image-frame').screenshot({ animations: 'disabled',
+        path: `test-results/${test.info().project.name}-sunlight-${id}-${quality}.png` });
     }
-  }
-  const fisheye = await page.getByLabel('镜头预设').locator('option').filter({ hasText: '鱼眼' }).getAttribute('value');
-  if (!fisheye) throw new Error('Missing fisheye lens');
-  await page.getByLabel('镜头预设').selectOption(fisheye);
-  await page.evaluate(() => new Promise<void>(resolve => requestAnimationFrame(() => requestAnimationFrame(() => resolve()))));
-  await page.locator('canvas').screenshot();
-  expect(errors).toEqual([]);
-});
+    const fisheye = await page.getByLabel('镜头预设').locator('option').filter({ hasText: '鱼眼' }).getAttribute('value');
+    if (!fisheye) throw new Error('Missing fisheye lens');
+    await page.getByLabel('镜头预设').selectOption(fisheye);
+    await page.evaluate(() => new Promise<void>(resolve => requestAnimationFrame(() => requestAnimationFrame(() => resolve()))));
+    await page.locator('canvas').screenshot();
+    expect(errors).toEqual([]);
+  });
+}
 
 test('path tracing accumulates real samples and returns to interactive rendering', async ({ page }) => {
   test.setTimeout(180_000);
