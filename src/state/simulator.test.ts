@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { axialDistance, cameraVerticalDistance } from '../domain/camera';
+import { axialDistance, cameraVerticalDistance, radialDistance } from '../domain/camera';
 import { DEFAULT_POSE, snapAperture, getLens } from '../data/equipment';
 import { signedTiltBlurMm } from '../optics/calculate';
 import { initialState, simulatorReducer } from './simulator';
@@ -166,4 +166,21 @@ describe('tilt-shift autofocus', () => {
 it('retains the ordinary close-focus limit when a tracked anchor moves behind the camera', () => {
   const state = simulatorReducer(initialState, { type: 'pose', patch: { yawDeg: 180 } });
   expect(state.parameters.focusDistanceM).toBe(getLens(state.parameters.lensId).minFocusM);
+});
+
+describe('fisheye radial focus', () => {
+  it('focuses and tracks a rear-hemisphere target without clamping to the close-focus limit', () => {
+    const fish = simulatorReducer(initialState, { type: 'parameters', patch: { lensId: 'fisheye-16', sensorId: 'medium-format' } });
+    const p = fish.parameters.pose;
+    const point = { x: p.x + 4, y: p.y + 2, z: p.z + 1 };
+    expect(axialDistance(p, point)).toBeLessThan(0);
+    const focused = simulatorReducer(fish, { type: 'focusAtPoint', point });
+    expect(focused.parameters.focusDistanceM).toBeCloseTo(Math.sqrt(21), 10);
+    const moved = simulatorReducer(focused, { type: 'pose', patch: { x: p.x + 1, yawDeg: 30 } });
+    expect(moved.parameters.focusDistanceM).toBeCloseTo(radialDistance(moved.parameters.pose, point), 10);
+    const turned = simulatorReducer(moved, { type: 'pose', patch: { yawDeg: 180, pitchDeg: 40 } });
+    expect(turned.parameters.focusDistanceM).toBe(moved.parameters.focusDistanceM);
+    const ordinary = simulatorReducer(turned, { type: 'parameters', patch: { lensId: 'prime-50' } });
+    expect(ordinary.parameters.focusDistanceM).toBeCloseTo(Math.max(0.45, axialDistance(ordinary.parameters.pose, point)), 10);
+  });
 });

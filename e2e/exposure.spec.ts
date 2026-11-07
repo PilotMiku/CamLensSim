@@ -24,8 +24,10 @@ test('keeps full exposure range in both output passes without re-exposing HDR or
       const scene = new THREE.Scene();
       const mesh = new THREE.Mesh(geometry, material);
       mesh.position.z = -3; scene.add(mesh);
+      const sun = new THREE.DirectionalLight(0xffffff, 0);
       const sim = new SimulatorRenderer(host, { cameraNear: 0.08, cameraFar: 80,
-        create: () => ({ scene, dispose: () => { material.dispose(); geometry.dispose(); } }),
+        create: () => ({ scene, sunlight: { sun, density: 0, distance: 10, groundHeight: 0, heightFalloff: 0 },
+          dispose: () => { material.dispose(); geometry.dispose(); } }),
       }, () => {});
       // Feed a known linear radiance to the production path-tracing output pass.
       // This isolates exposure from lighting, Monte Carlo variance and BVH construction.

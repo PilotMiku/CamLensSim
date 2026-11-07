@@ -7,6 +7,7 @@ import {
   MAX_FOCUS_M,
   pointOnAxis,
   cameraVerticalDistance,
+  radialDistance,
   withSubjectDistance,
   type PoseLimits,
 } from '../domain/camera';
@@ -120,13 +121,14 @@ function constrain(
 }
 
 export function requestedFocusForPoint(parameters: CameraParameters, point: Vec3): number | null {
+  if (getLens(parameters.lensId).kind === 'fisheye') return radialDistance(parameters.pose, point);
   // Preserve ordinary lens behavior when the tracked anchor passes behind the camera.
   if (parameters.tiltDeg === 0) return axialDistance(parameters.pose, point);
   return tiltFocusDistanceForPoint(parameters.focalLengthMm, parameters.tiltDeg,
     axialDistance(parameters.pose, point), cameraVerticalDistance(parameters.pose, point));
 }
 
-/** Keep the focus plane anchored to its world point while the camera moves. */
+/** Keep the lens's focus surface anchored to its world point while the camera moves. */
 function syncFocus(parameters: CameraParameters): CameraParameters {
   if (!parameters.focusTracking) return parameters;
   const lens = getLens(parameters.lensId);

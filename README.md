@@ -25,7 +25,7 @@ npm run preview          # 预览生产构建
 npm run test:e2e         # 桌面 / 移动端 Chromium 浏览器验证
 ```
 
-浏览器测试默认使用本机 Google Chrome；如果使用 Playwright 自带 Chromium，先运行 `npx playwright install chromium`，然后执行 `PLAYWRIGHT_CHANNEL=chromium npm run test:e2e`。
+浏览器测试默认使用本机 Google Chrome；如果使用 Playwright 自带 Chromium，先运行 `npx playwright install chromium`，然后执行 `PLAYWRIGHT_CHANNEL=chromium npm run test:e2e`。GitHub Actions 在 PR 和发布前运行全部桌面浏览器测试，以 ANGLE/SwiftShader 执行实际 WebGL2 着色器；测试失败会阻止发布并保存诊断文件。
 
 ## 自由机位
 
@@ -103,7 +103,7 @@ q = f² / (N × c)
 
 画幅比较假设相同虚拟像素数（参考为 24 MP）、相同量子效率与读出噪声；噪声按预览像素抽样，不模拟真实传感器缩图、Bayer 解码、双增益、暗电流、热像素、量化、满阱容量或厂商降噪。12000 e⁻ 与 2 e⁻ 是未标定的教学设定，不是实际机型数据；极低光子计数仍用高斯近似，不计算离散泊松过程。参数或机位变化生成新的噪声样本，静止时保持，光追累积与降噪不把传感器噪声平均掉。
 
-真实相机主平面位置、复杂像差、滚动快门、运动模糊与相机传感器降噪不建模。直线投影只使用薄透镜像距修正；鱼眼镜头使用等立体角（equisolid-angle）投影 `r = 2f·sin(θ/2)`，移轴镜头通过斜向视锥实现平移、通过理想薄透镜的沙姆定律与铰链法则计算倾斜焦平面，折返镜头用环形孔径近似中心遮挡。
+真实相机主平面位置、复杂像差、滚动快门、运动模糊与相机传感器降噪不建模。直线投影只使用薄透镜像距修正；光追光线从镜头孔径出发，汇聚到轴向对焦平面，再推进至近裁剪面，不以近裁剪面为测距起点。鱼眼镜头使用等立体角（equisolid-angle）投影 `r = 2f·sin(θ/2)`，深度、裁剪、点击对焦与跟焦统一使用径向距离，支持中画幅超过 180° 的对角视野；其景深以理想球面焦面近似，未标定真实镜头的像场弯曲和像差。移轴镜头通过斜向视锥实现平移、通过理想薄透镜的沙姆定律与铰链法则计算倾斜焦平面，折返镜头用环形孔径近似中心遮挡。
 
 移轴倾斜模型采用相机坐标 y 向上、z 向前，正倾角 α 表示镜头向下倾斜。令 f 以米计，s 是焦平面与光轴的交点距离，则清晰平面满足 `z/s − y·sin(α)/f = 1`，铰链位于 `y = −f/sin(α), z = 0`，像距为 `v = f/(cos(α) − f/s)`。因此镜头倾角与焦平面倾角不同；倾角固定、改变对焦距离时，焦平面绕铰链转动。无穷远对焦时仍保留倾斜平面，并非全画面清晰。公式依据 [Merklinger《Focusing the View Camera》31–35 页](https://www.cs.cmu.edu/~ILIM/courses/vision-sensors/readings/FVC16.pdf)。
 

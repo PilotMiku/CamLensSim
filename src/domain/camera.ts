@@ -97,6 +97,11 @@ export function cameraVerticalDistance(pose: CameraPose, point: Vec3): number {
     + (point.z - pose.z) * Math.cos(yaw) * Math.sin(pitch);
 }
 
+/** Radial object distance for the ideal equisolid fisheye model. */
+export function radialDistance(pose: CameraPose, point: Vec3): number {
+  return Math.hypot(point.x - pose.x, point.y - pose.y, point.z - pose.z);
+}
+
 export function pointOnAxis(pose: CameraPose, distanceM: number): Vec3 {
   const forward = forwardVector(pose);
   return {

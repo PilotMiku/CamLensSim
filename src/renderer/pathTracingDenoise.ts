@@ -6,6 +6,9 @@ export class PathTracingDenoiser {
   private readonly targets = [0, 1].map(() => new THREE.WebGLRenderTarget(1, 1, {
     // Solar radiance can exceed the 65,504 limit of FP16. Keep highlights finite.
     type: THREE.FloatType, depthBuffer: false,
+    // Every tap is at a texel centre. FP32 linear filtering is optional in WebGL2
+    // and is not guaranteed by EXT_color_buffer_float.
+    minFilter: THREE.NearestFilter, magFilter: THREE.NearestFilter,
   }));
   private readonly material = new THREE.ShaderMaterial({
     depthTest: false, depthWrite: false, toneMapped: false,

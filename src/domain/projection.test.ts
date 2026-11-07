@@ -29,4 +29,10 @@ describe('fisheye projection', () => {
       expect(() => fisheyeFieldOfViewDeg(36, value)).toThrow(RangeError);
     }
   });
+
+  it('includes rear-hemisphere directions in the medium-format diagonal', () => {
+    const medium = SENSORS.find(sensor => sensor.id === 'medium-format')!;
+    expect(fisheyeDiagonalDeg(16, medium)).toBeCloseTo(235.453943, 5);
+    expect(fisheyeDiagonalDeg(16, medium) / 2).toBeGreaterThan(90);
+  });
 });

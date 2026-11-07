@@ -25,6 +25,11 @@ vi.mock('./physicalSun', async importOriginal => {
   return { ...original, installTracerSolarBackground: vi.fn() };
 });
 
+vi.mock('./pathTracingFocus', async importOriginal => {
+  const original = await importOriginal<typeof import('./pathTracingFocus')>();
+  return { ...original, installTracerPlanarFocus: vi.fn() };
+});
+
 describe('path tracing quality', () => {
   it('keeps native tracer resolution after renderer scaling and resets accumulation', () => {
     const renderer = { extensions: { has: () => true } } as unknown as THREE.WebGLRenderer;

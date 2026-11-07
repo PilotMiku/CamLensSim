@@ -17,6 +17,7 @@ jobs:
   verify-pull-request:
     if: github.event_name == 'pull_request'
     runs-on: ubuntu-24.04
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -27,9 +28,16 @@ jobs:
       - run: npm run typecheck
       - run: npm test
       - run: npx playwright install --with-deps chromium
-      - run: npm run test:e2e -- --project=desktop --grep 'focus confirmation|keeps the optical calculator'
+      - name: Verify all desktop WebGL and interaction tests
+        run: npm run test:e2e -- --project=desktop
         env:
           PLAYWRIGHT_CHANNEL: chromium
+      - name: Save browser diagnostics on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: pr-browser-failure-diagnostics
+          path: test-results/
       - run: npm run build
         env:
           VITE_BASE_PATH: /CamLensSim/
@@ -37,6 +45,7 @@ jobs:
   publish:
     if: github.event_name != 'pull_request'
     runs-on: ubuntu-24.04
+    timeout-minutes: 30
     permissions:
       contents: read
       pages: write
@@ -55,8 +64,8 @@ jobs:
       - run: npm test
       - name: Install browser for interaction checks
         run: npx playwright install --with-deps chromium
-      - name: Verify focus sound and browser fallback
-        run: npm run test:e2e -- --project=desktop --grep 'focus confirmation|keeps the optical calculator'
+      - name: Verify all desktop WebGL and interaction tests
+        run: npm run test:e2e -- --project=desktop
         env:
           PLAYWRIGHT_CHANNEL: chromium
       - name: Save browser diagnostics on failure

@@ -4,6 +4,7 @@ import { createPathTracingScene } from './pathTracingScene';
 import type { SceneInstance } from '../scenes/types';
 import { installTracerSolarBackground } from './physicalSun';
 import { PathTracingDenoiser } from './pathTracingDenoise';
+import { installTracerPlanarFocus } from './pathTracingFocus';
 
 export function configurePhysicalCamera(camera: PhysicalCamera, source: THREE.PerspectiveCamera,
   lens: { focalMm: number; aperture: number; focusM: number; blades: number }, dof: boolean, sensorHeight: number) {
@@ -12,7 +13,7 @@ export function configurePhysicalCamera(camera: PhysicalCamera, source: THREE.Pe
   camera.apertureRotation = 0;
   camera.anamorphicRatio = 1;
   camera.filmGauge = sensorHeight * Math.max(source.aspect, 1);
-  // The library constructs a focal point by multiplying a ray by this distance.
+  // The camera shader adapter interprets this as distance along the optical axis.
   // Keep it finite: at 100,000 km residual focus-extension error is < 2e-8 mm
   // even for the custom 1200 mm lens. Raster DOF uses the exact infinity limit.
   camera.focusDistance = lens.focusM === Infinity ? 1e8 : lens.focusM;
@@ -32,6 +33,7 @@ export class PathTracingPreview {
     this.physicalWorld = createPathTracingScene(world);
     try {
     this.tracer = new WebGLPathTracer(renderer);
+    installTracerPlanarFocus(this.tracer);
     installTracerSolarBackground(this.tracer, this.physicalWorld.solar);
     this.tracer.textureSize.set(256, 256);
     this.tracer.bounces = 6;

@@ -42,7 +42,8 @@ const DOF_DISK_SAMPLES = Object.fromEntries(RENDER_QUALITY_ORDER.map(quality => 
 /**
  * Equisolid fisheye projection injected into every scene material's vertex
  * shader. When disabled it falls back to the ordinary perspective matrix, and
- * the depth buffer is encoded so the existing DOF reconstruction still works.
+ * fisheye depth encodes radial distance with the same near/far encoding as axial
+ * perspective depth, so downstream DOF can reconstruct it without a sign change.
  */
 const FISHEYE_PROJECT_VERTEX = /* glsl */ `
   vec4 mvPosition = vec4( transformed, 1.0 );
@@ -50,14 +51,17 @@ const FISHEYE_PROJECT_VERTEX = /* glsl */ `
     mvPosition = instanceMatrix * mvPosition;
   #endif
   mvPosition = modelViewMatrix * mvPosition;
+  vFisheyeViewPosition = mvPosition.xyz;
   if (uFisheye) {
-    float viewDepth = max(-mvPosition.z, 0.001);
+    float viewDepth = max(length(mvPosition.xyz), 0.001);
     vec3 dir = normalize(mvPosition.xyz);
     float theta = acos(clamp(-dir.z, -1.0, 1.0));
     float r = 2.0 * uFocalMm * sin(theta * 0.5);
     vec2 radial = dir.xy / max(length(dir.xy), 1e-6);
     float d = uFar * (viewDepth - uNear) / (viewDepth * (uFar - uNear));
-    float ndcZ = d * 2.0 - 1.0;
+    // Spherical clipping is done per fragment, including triangles crossing a
+    // radial near/far boundary. Do not clip the rear hemisphere as perspective z.
+    float ndcZ = clamp(d, 0.000001, 0.999999) * 2.0 - 1.0;
     gl_Position = vec4(radial * (r / uHalfSensorMm), ndcZ, 1.0);
   } else {
     gl_Position = projectionMatrix * mvPosition;
@@ -134,7 +138,7 @@ export class SimulatorRenderer {
   private sensor: SensorPreset | null = null;
   private readonly fisheyeUniforms: Array<Record<string, THREE.IUniform>> = [];
   private readonly fisheyeCulling = new WeakMap<THREE.Object3D, boolean>();
-  private readonly fisheyePatched = new WeakSet<THREE.Material>();
+  private readonly fisheyePatched = new Set<THREE.Material>();
 
   private lens: LensUniforms = {
     focalMm: 50,
@@ -309,6 +313,9 @@ export class SimulatorRenderer {
     const pose = parameters.pose;
     this.aspect = sensor.widthMm / sensor.heightMm;
     const isFisheye = lensPreset.kind === 'fisheye';
+    if (isFisheye !== this.lens.fisheye) {
+      for (const material of this.fisheyePatched) material.needsUpdate = true;
+    }
     this.camera.userData.solarProjection = isFisheye
       ? { focalMm: parameters.focalLengthMm, widthMm: sensor.widthMm, heightMm: sensor.heightMm } : null;
     let fovDeg = 30;
@@ -427,11 +434,14 @@ export class SimulatorRenderer {
       this.setFisheyeRay(ndc);
     } else {
       this.raycaster.setFromCamera(ndc, this.camera);
+      const forwardCosine = -this.raycaster.ray.direction.clone().transformDirection(this.camera.matrixWorldInverse).z;
+      this.raycaster.near = this.camera.near / forwardCosine;
+      this.raycaster.far = this.camera.far / forwardCosine;
     }
     const hit = this.raycaster.intersectObjects(this.world.scene.children, true)[0];
     if (!hit) return null;
     const viewPoint = hit.point.clone().applyMatrix4(this.camera.matrixWorldInverse);
-    const distanceM = -viewPoint.z;
+    const distanceM = this.lens.fisheye ? hit.distance : -viewPoint.z;
     if (!Number.isFinite(distanceM) || distanceM <= 0) return null;
     return {
       distanceM,
@@ -787,6 +797,8 @@ export class SimulatorRenderer {
       for (const item of list) {
         if (this.fisheyePatched.has(item)) continue;
         this.fisheyePatched.add(item);
+        const previousKey = item.customProgramCacheKey();
+        item.customProgramCacheKey = () => `${previousKey}:equisolid-radial-depth-v2:${Number(this.lens.fisheye)}`;
         item.onBeforeCompile = (shader) => {
           patchSolarShadow(shader, this.world.sunlight.sun);
           shader.uniforms.uFisheye = { value: this.lens.fisheye };
@@ -804,11 +816,27 @@ export class SimulatorRenderer {
             'uniform vec2 uHalfSensorMm;\n' +
             'uniform float uNear;\n' +
             'uniform float uFar;\n' +
+            'varying vec3 vFisheyeViewPosition;\n' +
             shader.vertexShader;
           shader.vertexShader = shader.vertexShader.replace(
             '#include <project_vertex>',
             FISHEYE_PROJECT_VERTEX,
           );
+          shader.fragmentShader = /* glsl */ `
+            #define SIMULATOR_FISHEYE_DEPTH ${Number(this.lens.fisheye)}
+            uniform bool uFisheye;
+            uniform float uNear, uFar;
+            varying vec3 vFisheyeViewPosition;
+          ` + shader.fragmentShader.replace('#include <logdepthbuf_fragment>', /* glsl */ `
+            #include <logdepthbuf_fragment>
+            // Ordinary lenses keep hardware early depth rejection. Only fish-
+            // eye variants statically write depth or discard on radial bounds.
+            #if SIMULATOR_FISHEYE_DEPTH
+              float radialDepth = length(vFisheyeViewPosition);
+              if (radialDepth < uNear || radialDepth > uFar) discard;
+              gl_FragDepth = uFar * (radialDepth - uNear) / (radialDepth * (uFar - uNear));
+            #endif
+          `);
         };
       }
     });
@@ -828,7 +856,7 @@ export class SimulatorRenderer {
     if (r < 1e-6) direction.set(0, 0, -1);
     else direction.set((pmm.x / r) * sinT, (pmm.y / r) * sinT, -cosT);
     direction.applyQuaternion(this.camera.quaternion).normalize();
-    this.raycaster.near = 0.01;
+    this.raycaster.near = this.camera.near;
     this.raycaster.far = this.camera.far;
     this.raycaster.ray.origin.copy(this.camera.position);
     this.raycaster.ray.direction.copy(direction);

@@ -112,7 +112,8 @@ export function createSunlightMaterial(volume: SunlightVolume) {
         }
         float d = texture2D(tDepth, vUv).r;
         float viewDepth = nearPlane * farPlane / (farPlane - d * (farPlane - nearPlane));
-        float distanceToSurface = viewDepth / max(-viewRay.z, 0.001);
+        // Fisheye scene depth is radial, including directions behind the camera.
+        float distanceToSurface = fisheye ? viewDepth : viewDepth / max(-viewRay.z, 0.001);
         float distanceM = min(maxDistance, distanceToSurface);
         vec3 direction = normalize(mat3(cameraWorld) * viewRay);
         vec3 origin = cameraWorld[3].xyz;

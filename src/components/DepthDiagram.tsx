@@ -1,4 +1,4 @@
-import { axialDistanceOrNull, subjectDistance } from '../domain/camera';
+import { axialDistanceOrNull, radialDistance, subjectDistance } from '../domain/camera';
 import { formatDistance, type OpticsResult } from '../optics/calculate';
 import { getScene } from '../scenes/registry';
 import { useSimulator } from '../state/simulator';
@@ -10,9 +10,10 @@ export function DepthDiagram({ optics, sceneId }: { optics: OpticsResult; sceneI
     dispatch,
   } = useSimulator();
   const pose = p.pose;
+  const fisheye = optics.lensKind === 'fisheye';
   const entries = getScene(sceneId).landmarks.map((mark) => ({
     mark,
-    distance: axialDistanceOrNull(pose, mark.position),
+    distance: fisheye ? radialDistance(pose, mark.position) : axialDistanceOrNull(pose, mark.position),
   }));
   const max = Math.max(
     8,
@@ -28,8 +29,11 @@ export function DepthDiagram({ optics, sceneId }: { optics: OpticsResult; sceneI
           <Icon name="focus" size={16} />
           <h2>清晰，发生在哪里</h2>
         </div>
-        <span>{optics.tilted ? '仅光轴截面 · m' : '沿光轴距离 · m'}</span>
+        <span>{fisheye ? '径向距离 · m' : optics.tilted ? '仅光轴截面 · m' : '沿光轴距离 · m'}</span>
       </div>
+      {fisheye && <p className="parameter-note">
+        鱼眼以到相机的直线距离近似球面景深；实际镜头的像场弯曲和像差未建模。
+      </p>}
       {optics.tilted && <p className="parameter-note">
         倾斜景深呈楔形，不同高度的清晰距离不同。此图仅展示光轴截面，物体标记仍表示其沿光轴距离。
       </p>}

@@ -36,7 +36,7 @@ export function OpticsReadout({ optics: o }: { optics: OpticsResult }) {
       </div>
       <div className="metric">
         <span>
-          {o.tilted ? '光轴截面景深' : '总景深'} <small>DOF</small>
+          {o.lensKind === 'fisheye' ? '径向景深近似' : o.tilted ? '光轴截面景深' : '总景深'} <small>DOF</small>
         </span>
         <strong data-testid="total-dof">
           {Number.isFinite(o.totalM) ? o.totalM.toFixed(2) : '∞'}
