@@ -7,6 +7,7 @@ import { OpticsReadout } from './components/OpticsReadout';
 import { Viewfinder } from './components/Viewfinder';
 import { ReferenceDialog } from './components/ReferenceDialog';
 import { getLens, getSensor } from './data/equipment';
+import type { RenderQuality } from './domain/types';
 import { calculateOptics } from './optics/calculate';
 import { SCENES, getScene } from './scenes/registry';
 import { useSimulator } from './state/simulator';
@@ -114,10 +115,11 @@ export function App() {
                     onChange={(event) =>
                       dispatch({
                         type: 'view',
-                        patch: { quality: event.target.value as 'balanced' | 'low' },
+                        patch: { quality: event.target.value as RenderQuality },
                       })
                     }
                   >
+                    <option value="high">画质</option>
                     <option value="balanced">均衡</option>
                     <option value="low">节能</option>
                   </select>

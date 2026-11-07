@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { Reflector } from 'three/examples/jsm/objects/Reflector.js';
+import type { RenderQuality } from '../domain/types';
 
 /** Planar scene reflection, gently distorted by static capillary ripples. */
 export function createLake() {
@@ -46,7 +47,7 @@ export function createLake() {
   lake.scale.set(34, 38, 1);
   const target = lake.getRenderTarget();
   return { lake, target,
-    setQuality(quality: 'balanced' | 'low') {
+    setQuality(quality: RenderQuality) {
       const width = quality === 'low' ? 512 : 1024;
       if (target.width !== width) target.setSize(width, width / 2);
     },

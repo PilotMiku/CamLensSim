@@ -206,7 +206,7 @@ test('afternoon sunlight renders in all scenes across quality, depth-of-field an
     await page.getByLabel('选择场景').selectOption(id);
     await expect(page.locator('.scene-subtitle')).toContainText('CLEAR AFTERNOON 16:00');
     await expect(page.getByTestId('canvas-host')).toHaveAttribute('data-status', 'ready');
-    for (const quality of ['low', 'balanced']) {
+    for (const quality of ['low', 'balanced', 'high']) {
       await page.getByLabel('渲染质量').selectOption(quality);
       await page.getByRole('button', { name: '景深预览' }).click();
       await page.evaluate(() => new Promise<void>(resolve => requestAnimationFrame(() => requestAnimationFrame(() => resolve()))));
@@ -236,6 +236,15 @@ test('path tracing accumulates real samples and returns to interactive rendering
   await expect(host).toHaveAttribute('data-path-denoised', 'true');
   await expect(host).toHaveAttribute('data-volumetric-light', 'true');
   await page.getByTestId('image-frame').screenshot({ path: `test-results/${test.info().project.name}-pathtraced.png` });
+  await expect(page.getByLabel('渲染质量').locator('option')).toHaveText(['画质', '均衡', '节能']);
+  for (const quality of ['high', 'balanced', 'low']) {
+    await page.getByLabel('渲染质量').selectOption(quality);
+    await expect(page.getByLabel('渲染质量')).toHaveValue(quality);
+    await page.evaluate(() => new Promise<void>(resolve => requestAnimationFrame(() => requestAnimationFrame(() => resolve()))));
+    await expect.poll(async () => Number(await host.getAttribute('data-path-samples')), { timeout: 120_000 }).toBeGreaterThan(1);
+    await expect(host).toHaveAttribute('data-render-mode', 'pathtraced');
+    await expect(host).toHaveAttribute('data-path-denoised', 'true');
+  }
   await page.getByLabel('光圈', { exact: true }).fill('4');
   await page.getByLabel('光圈', { exact: true }).press('Tab');
   await expect.poll(async () => Number(await host.getAttribute('data-path-samples')), { timeout: 120_000 }).toBeGreaterThan(1);

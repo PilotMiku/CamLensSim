@@ -3,6 +3,7 @@ import { WebGLPathTracer, PhysicalCamera } from 'three-gpu-pathtracer';
 import { createPathTracingScene } from './pathTracingScene';
 import type { SceneInstance } from '../scenes/types';
 import { PathTracingDenoiser } from './pathTracingDenoise';
+import type { RenderQuality } from '../domain/types';
 
 export function configurePhysicalCamera(camera: PhysicalCamera, source: THREE.PerspectiveCamera,
   lens: { focalMm: number; aperture: number; focusM: number; blades: number }, dof: boolean, sensorHeight: number) {
@@ -43,9 +44,9 @@ export class PathTracingPreview {
     this.tracer.setScene(this.physicalWorld.scene, this.camera);
     } catch (error) { this.tracer?.dispose(); this.denoiser.dispose(); this.physicalWorld.dispose(); throw error; }
   }
-  update(source: THREE.PerspectiveCamera, lens: { focalMm: number; aperture: number; focusM: number; blades: number }, dof: boolean, low: boolean, sensorHeight: number) {
+  update(source: THREE.PerspectiveCamera, lens: { focalMm: number; aperture: number; focusM: number; blades: number }, dof: boolean, quality: RenderQuality, sensorHeight: number) {
     configurePhysicalCamera(this.camera, source, lens, dof, sensorHeight);
-    this.tracer.renderScale = low ? 0.45 : 0.7;
+    this.tracer.renderScale = quality === 'high' ? 1 : quality === 'low' ? 0.45 : 0.7;
     this.tracer.updateCamera();
     this.tracer.reset();
     this.filteredTexture = null;

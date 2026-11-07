@@ -324,7 +324,7 @@ export class SimulatorRenderer {
     this.quality = view.quality;
     this.iso = parameters.iso;
     const nextRatio = Math.min(window.devicePixelRatio || 1, view.quality === 'low' ? 1 : 1.75);
-    const nextSamples = view.quality === 'balanced' ? 4 : 0;
+    const nextSamples = view.quality === 'low' ? 0 : 4;
     if (nextRatio !== this.pixelRatio) {
       this.pixelRatio = nextRatio;
       this.resize();
@@ -527,7 +527,7 @@ export class SimulatorRenderer {
     if (this.traceRequested && this.traceSupported && this.pathPreview && performance.now() - this.lastTraceUpdate > 250) {
       try {
         if (this.traceDirty) {
-          this.pathPreview.update(this.camera, this.lens, this.dofEnabled, this.quality === 'low', this.sensor?.heightMm ?? 24);
+          this.pathPreview.update(this.camera, this.lens, this.dofEnabled, this.quality, this.sensor?.heightMm ?? 24);
           // Cache depth, surface color and fixed-light shadows once per camera change.
           this.renderer.setRenderTarget(sceneTarget);
           this.renderer.render(this.world.scene, this.camera);

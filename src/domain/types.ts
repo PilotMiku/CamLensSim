@@ -67,7 +67,7 @@ export interface CameraParameters {
   shiftY: number;
 }
 
-export type RenderQuality = 'balanced' | 'low';
+export type RenderQuality = 'high' | 'balanced' | 'low';
 
 export interface ViewSettings {
   focusSound: boolean;
