@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { DEFAULT_PARAMETERS, SENSORS } from '../data/equipment';
+import { APERTURE_STOPS, DEFAULT_PARAMETERS, SENSORS } from '../data/equipment';
 import {
   blurCircleMm,
   calculateOptics,
@@ -49,7 +49,7 @@ describe('field of view and sensor equivalence', () => {
     for (const value of [0, -1, Infinity, NaN]) {
       expect(() => fieldOfViewDeg(value, 50)).toThrow(RangeError);
       expect(() => fieldOfViewDeg(36, value)).toThrow(RangeError);
-      expect(() => workingImageDistanceMm(50, value)).toThrow(RangeError);
+      if (value !== Infinity) expect(() => workingImageDistanceMm(50, value)).toThrow(RangeError);
     }
     expect(() => workingImageDistanceMm(50, 0.02)).toThrow(RangeError);
   });
@@ -139,5 +139,69 @@ describe('formatting', () => {
     expect(formatDistance(3.456)).toBe('3.46 m');
     expect(formatDistance(12.34)).toBe('12.3 m');
     expect(formatDistance(150.4)).toBe('150 m');
+  });
+});
+
+describe('infinity focus', () => {
+  it('uses the focal length as the infinity image distance', () => {
+    expect(workingImageDistanceMm(600, Infinity)).toBe(600);
+    expect(workingFovDeg(36, 600, Infinity)).toBe(fieldOfViewDeg(36, 600));
+    const o = calculateOptics({ ...DEFAULT_PARAMETERS, focusDistanceM: Infinity }, SENSORS[0]);
+    expect(o.magnification).toBe(0);
+    expect(o.nearM).toBeCloseTo(o.hyperfocalM - 0.05, 10);
+    expect(o.farM).toBe(Infinity);
+    expect(o.totalM).toBe(Infinity);
+    expect(Object.values(o).some(v => typeof v === 'number' && Number.isNaN(v))).toBe(false);
+  });
+
+  it('agrees with the finite-distance limit and the near DOF boundary', () => {
+    for (const f of [24, 50, 600, 1200]) {
+      const n = 4, c = 0.03;
+      const dof = depthOfField(f, n, Infinity, c);
+      expect(dof.nearM).toBeCloseTo(depthOfField(f, n, 1e13, c).nearM, 2);
+      expect(blurCircleMm(f, n, Infinity, dof.nearM)).toBeCloseTo(c, 10);
+      expect(blurCircleMm(f, n, Infinity, 10)).toBeCloseTo(blurCircleMm(f, n, 1e10, 10), 6);
+      expect(blurCircleMm(f, n, 10, Infinity)).toBeCloseTo(blurCircleMm(f, n, 10, 1e10), 6);
+      expect(blurCircleMm(f, n, Infinity, Infinity)).toBe(0);
+    }
+  });
+
+  it('continues to reject negative infinity', () => {
+    expect(() => workingImageDistanceMm(50, -Infinity)).toThrow(RangeError);
+    expect(() => depthOfField(50, 4, -Infinity, 0.03)).toThrow(RangeError);
+    expect(() => blurCircleMm(50, 4, Infinity, -Infinity)).toThrow(RangeError);
+  });
+});
+
+
+describe('unclipped relative exposure', () => {
+  it('continues doubling above the former 8x ceiling and halving below the 0.02x floor', () => {
+    for (const scale of [1e-4, 0.005, 0.01, 0.02, 8, 16, 32, 1024]) {
+      const ev = REFERENCE_EV100 - Math.log2(scale);
+      expect(exposureScale(ev)).toBeCloseTo(scale, 8);
+      expect(exposureScale(ev - 1) / exposureScale(ev)).toBeCloseTo(2, 10);
+      expect(exposureScale(ev + 1) / exposureScale(ev)).toBeCloseTo(0.5, 10);
+    }
+  });
+
+  it('retains one-stop relationships at extreme shutter, ISO and aperture settings', () => {
+    const scale = (n: number, t: number, iso: number) => exposureScale(exposureValue(n, t, iso));
+    expect(scale(0.95, 30, 25600) / scale(0.95, 15, 25600)).toBeCloseTo(2, 10);
+    expect(scale(32, 1 / 4000, 50) / scale(32, 1 / 8000, 50)).toBeCloseTo(2, 10);
+    expect(scale(32, 1 / 8000, 100) / scale(32, 1 / 8000, 50)).toBeCloseTo(2, 10);
+    expect(scale(16, 1 / 8000, 50) / scale(32, 1 / 8000, 50)).toBeCloseTo(4, 10);
+    expect(scale(0.95, 30, 25600)).toBeGreaterThan(3e6);
+    expect(scale(32, 1 / 8000, 50)).toBeLessThan(0.00003);
+  });
+
+  it('keeps exposure representable as a positive GPU float throughout the supported controls', () => {
+    for (const n of APERTURE_STOPS) for (const t of [1 / 8000, 1 / 125, 1, 30])
+      for (const iso of [50, 100, 6400, 25600]) {
+        const expected = (1.8 * 1.8 * 125) * t * (iso / 100) / (n * n);
+        const actual = exposureScale(exposureValue(n, t, iso));
+        expect(actual / expected).toBeCloseTo(1, 12);
+        expect(Number.isFinite(Math.fround(0.85 * actual))).toBe(true);
+        expect(Math.fround(0.85 * actual)).toBeGreaterThan(0);
+      }
   });
 });

@@ -2,8 +2,8 @@ import * as THREE from 'three';
 import { WebGLPathTracer, PhysicalCamera } from 'three-gpu-pathtracer';
 import { createPathTracingScene } from './pathTracingScene';
 import type { SceneInstance } from '../scenes/types';
+import { installTracerSolarBackground } from './physicalSun';
 import { PathTracingDenoiser } from './pathTracingDenoise';
-import type { RenderQuality } from '../domain/types';
 
 export function configurePhysicalCamera(camera: PhysicalCamera, source: THREE.PerspectiveCamera,
   lens: { focalMm: number; aperture: number; focusM: number; blades: number }, dof: boolean, sensorHeight: number) {
@@ -12,7 +12,10 @@ export function configurePhysicalCamera(camera: PhysicalCamera, source: THREE.Pe
   camera.apertureRotation = 0;
   camera.anamorphicRatio = 1;
   camera.filmGauge = sensorHeight * Math.max(source.aspect, 1);
-  camera.focusDistance = lens.focusM;
+  // The library constructs a focal point by multiplying a ray by this distance.
+  // Keep it finite: at 100,000 km residual focus-extension error is < 2e-8 mm
+  // even for the custom 1200 mm lens. Raster DOF uses the exact infinity limit.
+  camera.focusDistance = lens.focusM === Infinity ? 1e8 : lens.focusM;
   camera.bokehSize = dof ? lens.focalMm / lens.aperture : 0;
   camera.apertureBlades = lens.blades;
 }
@@ -29,6 +32,7 @@ export class PathTracingPreview {
     this.physicalWorld = createPathTracingScene(world);
     try {
     this.tracer = new WebGLPathTracer(renderer);
+    installTracerSolarBackground(this.tracer, this.physicalWorld.solar);
     this.tracer.textureSize.set(256, 256);
     this.tracer.bounces = 6;
     this.tracer.transmissiveBounces = 8;
@@ -44,15 +48,20 @@ export class PathTracingPreview {
     this.tracer.setScene(this.physicalWorld.scene, this.camera);
     } catch (error) { this.tracer?.dispose(); this.denoiser.dispose(); this.physicalWorld.dispose(); throw error; }
   }
-  update(source: THREE.PerspectiveCamera, lens: { focalMm: number; aperture: number; focusM: number; blades: number }, dof: boolean, quality: RenderQuality, sensorHeight: number) {
+  update(source: THREE.PerspectiveCamera, lens: { focalMm: number; aperture: number; focusM: number; blades: number }, dof: boolean, sensorHeight: number) {
     configurePhysicalCamera(this.camera, source, lens, dof, sensorHeight);
-    this.tracer.renderScale = quality === 'high' ? 1 : quality === 'low' ? 0.45 : 0.7;
+    // The renderer drawing buffer already applies the selected quality percentage.
+    this.tracer.renderScale = 1;
     this.tracer.updateCamera();
     this.tracer.reset();
     this.filteredTexture = null;
     this.filteredSamples = 0;
   }
   render(depth: THREE.Texture, guide: THREE.Texture) {
+    if (this.physicalWorld.syncSun()) {
+      this.tracer.updateLights();
+      this.filteredTexture = null; this.filteredSamples = 0;
+    }
     this.tracer.renderSample();
     const samples = Math.floor(this.tracer.samples);
     // Publish complete samples so the filter never mixes updated and stale tiles.

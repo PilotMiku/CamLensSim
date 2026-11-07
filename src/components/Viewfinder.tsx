@@ -267,7 +267,7 @@ export function Viewfinder({ sceneId }: { sceneId: string }) {
             </span>
             <span>f/{parameters.aperture.toFixed(1)}</span>
             <span>
-              {parameters.focusDistanceM.toFixed(2)}
+              {parameters.focusDistanceM === Infinity ? '∞' : parameters.focusDistanceM.toFixed(2)}
               <small>m</small>
             </span>
             <span className="readout-manual">M</span>

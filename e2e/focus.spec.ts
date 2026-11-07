@@ -1,0 +1,33 @@
+import { expect, test } from '@playwright/test';
+
+test('supports far-distance and infinity focus without invalid diagram styles or WebGL errors', async ({ page }) => {
+  const errors: string[] = [];
+  page.on('pageerror', e => errors.push(e.message));
+  page.on('console', m => { if (m.type() === 'error') errors.push(m.text()); });
+  await page.goto('/');
+  await expect(page.getByTestId('canvas-host')).toHaveAttribute('data-status', 'ready');
+  const focus = page.getByLabel('对焦距离', { exact: true });
+  await focus.fill('800');
+  await focus.press('Tab');
+  await expect(focus).toHaveValue('800.00');
+  await page.getByRole('button', { name: '对焦到无穷远 ∞' }).click();
+  await expect(focus).toHaveValue('∞');
+  await expect(page.getByRole('button', { name: '自动跟焦', exact: true })).toHaveAttribute('aria-pressed', 'false');
+  await expect(page.getByLabel('对焦距离滑块', { exact: true })).toHaveAttribute('aria-valuetext', '无穷远');
+  await expect(page.locator('.focus-marker')).toContainText('对焦 ∞');
+  await expect(page.locator('.optics-detail')).toContainText('放大率 0×');
+  await page.getByLabel('镜头预设').selectOption('tele-600');
+  await expect(focus).toHaveValue('∞');
+  const styles = await page.locator('.depth-module [style]').evaluateAll(nodes => nodes.map(n => n.getAttribute('style')));
+  expect(styles.join(' ')).not.toMatch(/NaN|Infinity/);
+  await focus.fill('1200');
+  await focus.press('Enter');
+  await expect(focus).toHaveValue('1200.00');
+  await focus.fill('∞');
+  await focus.press('Tab');
+  await expect(focus).toHaveValue('∞');
+  await page.getByRole('button', { name: '复位机位', exact: true }).click();
+  await expect(focus).not.toHaveValue('∞');
+  await page.locator('canvas').screenshot();
+  expect(errors).toEqual([]);
+});

@@ -9,7 +9,12 @@ import type { SensorPreset } from './types';
 
 /** Diagonal field the fisheye covers, in degrees. */
 export function fisheyeDiagonalDeg(focalMm: number, sensor: SensorPreset): number {
-  const diagonal = Math.hypot(sensor.widthMm, sensor.heightMm);
-  const ratio = Math.min(diagonal / (4 * focalMm), 1);
-  return (2 * Math.asin(ratio) * 180) / Math.PI;
+  return fisheyeFieldOfViewDeg(Math.hypot(sensor.widthMm, sensor.heightMm), focalMm);
+}
+
+/** Full edge-to-edge angle, twice the angle from the optical axis to one edge. */
+export function fisheyeFieldOfViewDeg(dimensionMm: number, focalMm: number): number {
+  if (!Number.isFinite(dimensionMm) || dimensionMm <= 0 || !Number.isFinite(focalMm) || focalMm <= 0)
+    throw new RangeError('Sensor dimension and focal length must be finite and positive');
+  return (4 * Math.asin(Math.min(dimensionMm / (4 * focalMm), 1)) * 180) / Math.PI;
 }

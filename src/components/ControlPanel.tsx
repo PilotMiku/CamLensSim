@@ -1,7 +1,7 @@
-import { subjectDistance } from '../domain/camera';
+import { MAX_FOCUS_M, subjectDistance } from '../domain/camera';
 import { getLens, getSensor, LENSES, minFocusMeters, SENSORS } from '../data/equipment';
 import { exposureValue, formatEv } from '../optics/calculate';
-import { useSimulator } from '../state/simulator';
+import { requestedFocusForPoint, useSimulator } from '../state/simulator';
 import { Icon, type IconName } from './Icon';
 import { ParameterControl } from './ParameterControl';
 
@@ -75,6 +75,8 @@ export function ControlPanel() {
   const isPrime = lens.minFocalMm === lens.maxFocalMm;
   const isTiltShift = lens.kind === 'tilt-shift';
   const isMirror = lens.kind === 'mirror';
+  const requestedFocus = requestedFocusForPoint(p, p.focusPoint);
+  const focusLimited = p.focusTracking && (requestedFocus === null || requestedFocus < minFocus || requestedFocus > MAX_FOCUS_M);
   const focalLog = lens.maxFocalMm / lens.minFocalMm > 8;
   return (
     <aside className="control-panel" aria-label="相机参数">
@@ -189,7 +191,7 @@ export function ControlPanel() {
         )}
         <p className="parameter-note">
           {isTiltShift
-            ? '移轴镜头可倾斜焦平面（沙姆定律）或平移取景，修正透视。'
+            ? '倾角通过沙姆定律改变焦平面；平移取景可在机身保持水平时拍摄高处。'
             : isMirror
               ? '折返镜头光圈固定 f/8，焦外光斑呈甜甜圈状。'
               : '最小对焦距离 ' + minFocus.toFixed(2) + ' m · 光圈按三分之一档取整'}
@@ -201,13 +203,27 @@ export function ControlPanel() {
           label="对焦距离"
           value={p.focusDistanceM}
           min={minFocus}
-          max={30}
+          max={MAX_FOCUS_M}
           step={0.01}
           unit="m"
           onChange={(value) => dispatch({ type: 'focusDistance', value })}
           logarithmic
-          marks={[minFocus.toFixed(2) + ' m', '30 m']}
+          allowInfinity
+          marks={[minFocus.toFixed(2) + ' m', '100 km', '∞']}
         />
+        {isTiltShift && p.tiltDeg !== 0 && <p className="parameter-note">
+          对焦距离表示焦平面与光轴的交点。正倾角使焦平面向画面上方远离相机；无穷远时仍是倾斜焦平面，并非全画面合焦。部分点超出当前倾角的调焦范围，点按后保持原焦点。
+        </p>}
+        {focusLimited && <p className="parameter-note" role="status">
+          跟焦目标超出当前镜头或倾角的调焦范围，可减小倾角或重新选点。
+        </p>}
+        <button
+          className="ghost-button"
+          aria-pressed={p.focusDistanceM === Infinity}
+          onClick={() => dispatch({ type: 'focusDistance', value: Infinity })}
+        >
+          对焦到无穷远 ∞
+        </button>
         <Toggle
           label="自动跟焦"
           pressed={p.focusTracking}
@@ -264,7 +280,7 @@ export function ControlPanel() {
           <label>
             ISO
             <select value={p.iso} onChange={(event) => set({ iso: Number(event.target.value) })}>
-              {[100, 200, 400, 800, 1600, 3200, 6400].map((value) => (
+              {[50, 100, 200, 400, 800, 1600, 3200, 6400, 12800, 25600].map((value) => (
                 <option key={value} value={value}>
                   {value}
                 </option>
@@ -277,9 +293,10 @@ export function ControlPanel() {
               value={p.shutterSeconds}
               onChange={(event) => set({ shutterSeconds: Number(event.target.value) })}
             >
-              {[30, 60, 125, 250, 500, 1000].map((value) => (
-                <option key={value} value={1 / value}>
-                  1/{value} s
+              {[30, 15, 8, 4, 2, 1, 1 / 2, 1 / 4, 1 / 8, 1 / 15, 1 / 30, 1 / 60,
+                1 / 125, 1 / 250, 1 / 500, 1 / 1000, 1 / 2000, 1 / 4000, 1 / 8000].map((seconds) => (
+                <option key={seconds} value={seconds}>
+                  {seconds >= 1 ? `${seconds} s` : `1/${Math.round(1 / seconds)} s`}
                 </option>
               ))}
             </select>
@@ -290,11 +307,14 @@ export function ControlPanel() {
           pressed={p.constantExposure}
           onChange={(next) => set({ constantExposure: next })}
           description={
-            p.constantExposure ? '只观察景深，亮度保持不变' : '按光圈 / 快门 / ISO 实际变化'
+            p.constantExposure ? '固定显示曝光倍率，便于比较景深和噪声' : '按光圈 / 快门 / ISO 改变曝光倍率'
           }
         />
         <p className="parameter-note">
-          EV₁₀₀ {formatEv(ev)} · ISO 越高颗粒越明显 · 收小光圈时衍射会限制绝对锐度
+          EV₁₀₀ {formatEv(ev)} · 高光经显示色调映射可能饱和；快门暂不模拟运动模糊
+        </p>
+        <p className="parameter-note">
+          ISO 放大信号与噪声，不增加光子。提高 ISO 并缩短快门来保持亮度时，噪声更明显。不同画幅按相同像素数的虚拟传感器比较。
         </p>
       </section>
       <div className="panel-foot">

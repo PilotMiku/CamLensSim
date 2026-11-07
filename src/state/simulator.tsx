@@ -6,7 +6,7 @@ import {
   clampPose,
   MAX_FOCUS_M,
   pointOnAxis,
-  resolveFocusDistance,
+  cameraVerticalDistance,
   withSubjectDistance,
   type PoseLimits,
 } from '../domain/camera';
@@ -18,6 +18,7 @@ import {
   minFocusMeters,
   snapAperture,
 } from '../data/equipment';
+import { tiltFocusDistanceForPoint } from '../optics/calculate';
 import { getScene } from '../scenes/registry';
 
 export interface SimulatorState {
@@ -70,6 +71,12 @@ const sanitizePoint = (point: Vec3): Vec3 => ({
   z: Number.isFinite(point.z) ? point.z : 0,
 });
 
+/** Positive Infinity is an intentional focus setting; other non-finite input is invalid. */
+function focusClamp(value: number, min: number, fallback: number): number {
+  const candidate = Number.isFinite(value) || value === Infinity ? value : fallback;
+  return candidate === Infinity ? Infinity : clamp(candidate, min, MAX_FOCUS_M);
+}
+
 /** Apply the current lens and sensor limits to a parameter set. */
 function constrain(
   input: CameraParameters,
@@ -95,10 +102,9 @@ function constrain(
     lensId: lens.id,
     focalLengthMm,
     aperture,
-    focusDistanceM: finiteClamp(
+    focusDistanceM: focusClamp(
       input.focusDistanceM,
       minFocusMeters(lens, focalLengthMm),
-      MAX_FOCUS_M,
       previous.focusDistanceM,
     ),
     iso: finiteClamp(input.iso, 50, 25600, previous.iso),
@@ -113,18 +119,21 @@ function constrain(
   };
 }
 
+export function requestedFocusForPoint(parameters: CameraParameters, point: Vec3): number | null {
+  // Preserve ordinary lens behavior when the tracked anchor passes behind the camera.
+  if (parameters.tiltDeg === 0) return axialDistance(parameters.pose, point);
+  return tiltFocusDistanceForPoint(parameters.focalLengthMm, parameters.tiltDeg,
+    axialDistance(parameters.pose, point), cameraVerticalDistance(parameters.pose, point));
+}
+
 /** Keep the focus plane anchored to its world point while the camera moves. */
 function syncFocus(parameters: CameraParameters): CameraParameters {
   if (!parameters.focusTracking) return parameters;
   const lens = getLens(parameters.lensId);
   return {
     ...parameters,
-    focusDistanceM: resolveFocusDistance(
-      parameters.pose,
-      parameters.focusPoint,
-      minFocusMeters(lens, parameters.focalLengthMm),
-      MAX_FOCUS_M,
-    ),
+    focusDistanceM: focusClamp(requestedFocusForPoint(parameters, parameters.focusPoint) ?? Infinity,
+      minFocusMeters(lens, parameters.focalLengthMm), parameters.focusDistanceM),
   };
 }
 
@@ -135,12 +144,13 @@ const settle = (next: CameraParameters, previous: CameraParameters, limits: Pose
 function manualFocus(parameters: CameraParameters, value: number): CameraParameters {
   const lens = getLens(parameters.lensId);
   const min = minFocusMeters(lens, parameters.focalLengthMm);
-  const distance = finiteClamp(value, min, MAX_FOCUS_M, parameters.focusDistanceM);
+  const distance = focusClamp(value, min, parameters.focusDistanceM);
   return {
     ...parameters,
     focusTracking: false,
     focusDistanceM: distance,
-    focusPoint: pointOnAxis(parameters.pose, distance),
+    // Infinity is a focus setting, not a world-space point. Keep the last finite anchor.
+    focusPoint: distance === Infinity ? { ...parameters.focusPoint } : pointOnAxis(parameters.pose, distance),
   };
 }
 
@@ -189,11 +199,10 @@ export function simulatorReducer(state: SimulatorState, action: SimulatorAction)
     case 'focusAtPoint': {
       const point = sanitizePoint(action.point);
       const lens = getLens(p.lensId);
-      const distance = clamp(
-        axialDistance(p.pose, point),
-        minFocusMeters(lens, p.focalLengthMm),
-        MAX_FOCUS_M,
-      );
+      const requested = requestedFocusForPoint(p, point);
+      // Points behind the tilted lens's hinge cannot be focused with a positive axis intercept.
+      if (requested === null) return state;
+      const distance = focusClamp(requested, minFocusMeters(lens, p.focalLengthMm), p.focusDistanceM);
       return {
         ...state,
         parameters: settle({ ...p, focusPoint: point, focusDistanceM: distance }, p, limits),

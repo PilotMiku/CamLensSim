@@ -1,3 +1,4 @@
+import { ShapedAreaLight } from 'three-gpu-pathtracer';
 import * as THREE from 'three';
 import { describe, expect, it, vi } from 'vitest';
 
@@ -107,7 +108,7 @@ describe('photographic scene construction', () => {
         expect(instance.sky?.time).toBe('16:00');
         expect(instance.scene.background).toBeInstanceOf(THREE.CubeTexture);
         expect(instance.sky!.skybox.images).toHaveLength(6);
-        expect(instance.scene.environment).toBe(instance.sky!.environment);
+        expect(instance.scene.environment).toBe(instance.sky!.lightingEnvironment);
         const skyDisposed = vi.spyOn(instance.sky!.skybox, 'dispose');
         const envDisposed = vi.spyOn(instance.sky!.environment, 'dispose');
         const volume = instance.sunlight!;
@@ -128,9 +129,9 @@ describe('photographic scene construction', () => {
         expect(physicalBeam.position.equals(beam.position)).toBe(true);
         expect(physicalBeam.target.position.equals(beam.target.position)).toBe(true);
         const physicalSun = physical.scene.getObjectByName(volume.sun.name) as THREE.DirectionalLight;
-        expect(physicalSun).toBeInstanceOf(THREE.DirectionalLight);
-        expect(physicalSun.position.equals(volume.sun.position)).toBe(true);
-        expect(physical.scene.children.filter(object => object instanceof THREE.Light)).toHaveLength(2);
+        expect(physicalSun).toBeInstanceOf(ShapedAreaLight);
+        expect(physical.solar.uniforms.physicalSolarDirection.value.distanceTo(volume.sun.position.clone().sub(volume.sun.target.position).normalize())).toBeLessThan(1e-10);
+        expect(physical.scene.children.filter(object => (object as THREE.Light).isLight)).toHaveLength(2);
         const fixture = instance.scene.getObjectByName(beam.userData.fixture)!;
         expect(fixture).toBeInstanceOf(THREE.Group);
         expect(fixture.userData.fixtureType).toBe(definition.id === 'indoor' ? 'pendant' : 'street');
@@ -178,13 +179,14 @@ describe('photographic scene construction', () => {
     expect(physical.scene.getObjectByName('raster-contact-shadow')).toBeUndefined();
     expect(physical.scene.getObjectByName('path-traced-atmosphere')).toBeUndefined();
     const sun = physical.scene.getObjectByName(instance.sunlight.sun.name) as THREE.DirectionalLight;
-    expect(sun.position.equals(instance.sunlight.sun.position)).toBe(true);
-    expect(sun.target.position.equals(instance.sunlight.sun.target.position)).toBe(true);
+    expect(sun).toBeInstanceOf(ShapedAreaLight);
+    expect(physical.solar.uniforms.physicalSolarDirection.value.distanceTo(instance.sky!.sunDirection)).toBeLessThan(1e-10);
     // The physical scene keeps the sky's own cube texture as its background while the
     // lighting environment is the owned clone, so the interactive scene can be disposed safely.
-    expect(physical.scene.background).toBe(instance.sky!.environment);
+    expect(physical.scene.background).toBe(instance.sky!.lightingEnvironment);
     expect(physical.scene.environment).not.toBe(instance.scene.environment);
-    expect(physical.scene.environment!.image).toBe(instance.sky!.environment.image);
+    // Hemisphere fill owns its baked pixels instead of mutating the interactive sky.
+    expect(physical.scene.environment!.image).not.toBe(instance.sky!.lightingEnvironment.image);
     physical.scene.updateMatrixWorld(true);
     const generated = new PathTracingSceneGenerator(physical.scene).generate();
     expect(generated.bvh).toBeDefined();
@@ -225,9 +227,13 @@ describe('photographic scene construction', () => {
     const water = instance.scene.getObjectByName('alpine-lake-reflection') as Reflector;
     const target = water.getRenderTarget();
     expect([target.width, target.height]).toEqual([1024, 512]);
-    instance.setQuality!('low');
+    instance.setQuality!('smooth');
     expect([target.width, target.height]).toEqual([512, 256]);
     instance.setQuality!('balanced');
+    expect([target.width, target.height]).toEqual([870, 435]);
+    instance.setQuality!('performance');
+    expect([target.width, target.height]).toEqual([717, 358]);
+    instance.setQuality!('fine');
     expect([target.width, target.height]).toEqual([1024, 512]);
     const dispose = vi.spyOn(target, 'dispose');
     instance.dispose();

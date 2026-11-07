@@ -16,7 +16,7 @@ export function DepthDiagram({ optics, sceneId }: { optics: OpticsResult; sceneI
   }));
   const max = Math.max(
     8,
-    p.focusDistanceM * 1.2,
+    Number.isFinite(p.focusDistanceM) ? p.focusDistanceM * 1.2 : optics.nearM * 1.2,
     subjectDistance(pose) + 2.5,
     ...entries.map((entry) => (entry.distance ? entry.distance * 1.12 : 0)),
   );
@@ -28,8 +28,11 @@ export function DepthDiagram({ optics, sceneId }: { optics: OpticsResult; sceneI
           <Icon name="focus" size={16} />
           <h2>清晰，发生在哪里</h2>
         </div>
-        <span>沿光轴距离 · m</span>
+        <span>{optics.tilted ? '仅光轴截面 · m' : '沿光轴距离 · m'}</span>
       </div>
+      {optics.tilted && <p className="parameter-note">
+        倾斜景深呈楔形，不同高度的清晰距离不同。此图仅展示光轴截面，物体标记仍表示其沿光轴距离。
+      </p>}
       <div className="depth-track-area">
         <div className="depth-track">
           <div
@@ -40,7 +43,7 @@ export function DepthDiagram({ optics, sceneId }: { optics: OpticsResult; sceneI
             }}
           />
           <div className="focus-marker" style={{ left: `${position(p.focusDistanceM)}%` }}>
-            <span>对焦 {p.focusDistanceM.toFixed(2)} m</span>
+            <span>对焦 {formatDistance(p.focusDistanceM)}</span>
             <i />
           </div>
           {[0, 0.25, 0.5, 0.75, 1].map((t) => (
@@ -73,7 +76,7 @@ export function DepthDiagram({ optics, sceneId }: { optics: OpticsResult; sceneI
       <div className="depth-summary">
         <span>
           <i />
-          可接受清晰范围
+          {optics.tilted ? '光轴上的可接受清晰范围' : '可接受清晰范围'}
         </span>
         <strong>
           {formatDistance(optics.nearM)}

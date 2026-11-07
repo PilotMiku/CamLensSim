@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
-import { axialDistance } from '../domain/camera';
+import { axialDistance, cameraVerticalDistance } from '../domain/camera';
 import { DEFAULT_POSE, snapAperture, getLens } from '../data/equipment';
+import { signedTiltBlurMm } from '../optics/calculate';
 import { initialState, simulatorReducer } from './simulator';
 
 describe('camera constraints', () => {
@@ -95,9 +96,74 @@ describe('camera constraints', () => {
     expect(reset.parameters.pose).toEqual(DEFAULT_POSE);
     expect(reset.parameters.focusTracking).toBe(true);
     const fullReset = simulatorReducer(
-      simulatorReducer(near, { type: 'view', patch: { grid: true, quality: 'low' } }),
+      simulatorReducer(near, { type: 'view', patch: { grid: true, quality: 'smooth' } }),
       { type: 'reset' },
     );
     expect(fullReset).toEqual(initialState);
   });
+});
+
+describe('far and infinity focus', () => {
+  it('focuses on distant world points without clamping to 30 metres and keeps tracking', () => {
+    const point = { x: 0, y: 1, z: -800 };
+    const focused = simulatorReducer(initialState, { type: 'focusAtPoint', point });
+    expect(focused.parameters.focusDistanceM).toBeCloseTo(axialDistance(DEFAULT_POSE, point), 8);
+    const moved = simulatorReducer(focused, { type: 'pose', patch: { z: 5 } });
+    expect(moved.parameters.focusDistanceM).toBeCloseTo(axialDistance(moved.parameters.pose, point), 8);
+  });
+
+  it('supports 100 km finite focus and retains infinity when moving or switching lenses', () => {
+    const finite = simulatorReducer(initialState, { type: 'focusDistance', value: 100_000 });
+    expect(finite.parameters.focusDistanceM).toBe(100_000);
+    const infinity = simulatorReducer(finite, { type: 'focusDistance', value: Infinity });
+    expect(infinity.parameters.focusDistanceM).toBe(Infinity);
+    expect(infinity.parameters.focusTracking).toBe(false);
+    expect(Object.values(infinity.parameters.focusPoint).every(Number.isFinite)).toBe(true);
+    const moved = simulatorReducer(infinity, { type: 'pose', patch: { z: 5 } });
+    const tele = simulatorReducer(moved, { type: 'parameters', patch: { lensId: 'tele-600' } });
+    expect(tele.parameters.focusDistanceM).toBe(Infinity);
+    for (const invalid of [NaN, -Infinity]) {
+      expect(simulatorReducer(tele, { type: 'focusDistance', value: invalid }).parameters.focusDistanceM).toBe(Infinity);
+    }
+    const refocused = simulatorReducer(tele, { type: 'focusAtPoint', point: { x: 0, y: 1, z: -100 } });
+    expect(refocused.parameters.focusDistanceM).toBeGreaterThan(100);
+    expect(refocused.parameters.focusDistanceM).toBeLessThan(106);
+    expect(simulatorReducer(tele, { type: 'resetCamera' }).parameters.focusDistanceM).not.toBe(Infinity);
+  });
+});
+
+
+describe('tilt-shift autofocus', () => {
+  const setup = () => simulatorReducer(simulatorReducer(initialState,
+    { type: 'pose', patch: { x: 0, y: 1, z: 3, pitchDeg: 0, yawDeg: 0 } }),
+    { type: 'parameters', patch: { lensId: 'ts-24', tiltDeg: 2, focusTracking: false } });
+
+  it('focuses an off-axis point and keeps it on the tilted focus plane while moving', () => {
+    const point = { x: 0, y: 0.8, z: 1 };
+    const focused = simulatorReducer(setup(), { type: 'focusAtPoint', point });
+    const tracked = simulatorReducer(focused, { type: 'parameters', patch: { focusTracking: true } });
+    const moved = simulatorReducer(tracked, { type: 'pose', patch: { y: 1.1, z: 3.5, pitchDeg: -2, yawDeg: 5 } });
+    for (const state of [focused, tracked, moved]) {
+      const p = state.parameters, z = axialDistance(p.pose, point), y = cameraVerticalDistance(p.pose, point);
+      expect(signedTiltBlurMm(p.focalLengthMm, p.aperture, p.focusDistanceM, p.tiltDeg, z, y / z)).toBeCloseTo(0, 10);
+    }
+    expect(focused.parameters.focusDistanceM).not.toBe(2);
+    expect(moved.parameters.focusDistanceM).not.toBe(tracked.parameters.focusDistanceM);
+  });
+
+  it('rejects point selections beyond the hinge and preserves manual focus when changing tilt', () => {
+    const state = setup();
+    const outside = simulatorReducer(state, { type: 'focusAtPoint', point: { x: 0, y: 0, z: 1 } });
+    expect(outside).toBe(state);
+    const changed = simulatorReducer(state, { type: 'parameters', patch: { tiltDeg: -2 } });
+    expect(changed.parameters.focusDistanceM).toBe(state.parameters.focusDistanceM);
+    const normal = simulatorReducer(changed, { type: 'parameters', patch: { lensId: 'prime-50' } });
+    expect(normal.parameters.tiltDeg).toBe(0);
+  });
+});
+
+
+it('retains the ordinary close-focus limit when a tracked anchor moves behind the camera', () => {
+  const state = simulatorReducer(initialState, { type: 'pose', patch: { yawDeg: 180 } });
+  expect(state.parameters.focusDistanceM).toBe(getLens(state.parameters.lensId).minFocusM);
 });

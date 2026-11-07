@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import { describe, expect, it } from 'vitest';
-import { PathTracingSceneGenerator } from 'three-gpu-pathtracer';
+import { PathTracingSceneGenerator, ShapedAreaLight } from 'three-gpu-pathtracer';
 import { addPendantLamp, addStreetLamp } from './fixtures';
 import { disposeScene } from './modeling';
 import { createPathTracingScene } from '../renderer/pathTracingScene';
@@ -29,7 +29,7 @@ describe('physical light fixtures', () => {
       physical.scene.updateMatrixWorld(true);
       const generated = new PathTracingSceneGenerator(physical.scene).generate();
       expect(generated.lights).toHaveLength(2);
-      expect(generated.lights.find(source => source.name === sun.name)).toBeInstanceOf(THREE.DirectionalLight);
+      expect(generated.lights.find(source => source.name === sun.name)).toBeInstanceOf(ShapedAreaLight);
       const tracedLight = generated.lights.find(source => source.name === light.name) as THREE.SpotLight;
       expect(tracedLight.position.equals(light.position)).toBe(true);
       expect(tracedLight.target.position.equals(light.target.position)).toBe(true);

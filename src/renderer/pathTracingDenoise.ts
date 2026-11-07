@@ -4,7 +4,8 @@ import { FullScreenQuad } from 'three/examples/jsm/postprocessing/Pass.js';
 /** Spatial filtering only: never feed filtered pixels back into path accumulation. */
 export class PathTracingDenoiser {
   private readonly targets = [0, 1].map(() => new THREE.WebGLRenderTarget(1, 1, {
-    type: THREE.HalfFloatType, depthBuffer: false,
+    // Solar radiance can exceed the 65,504 limit of FP16. Keep highlights finite.
+    type: THREE.FloatType, depthBuffer: false,
   }));
   private readonly material = new THREE.ShaderMaterial({
     depthTest: false, depthWrite: false, toneMapped: false,

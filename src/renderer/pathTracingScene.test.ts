@@ -1,8 +1,9 @@
 import * as THREE from 'three';
 import { describe, expect, it } from 'vitest';
-import { PhysicalCamera, PathTracingSceneGenerator } from 'three-gpu-pathtracer';
+import { PhysicalCamera, PathTracingSceneGenerator, ShapedAreaLight } from 'three-gpu-pathtracer';
 import { configurePhysicalCamera } from './pathTracing';
 import { bakeInstances, createPathTracingScene } from './pathTracingScene';
+import { solarRadiance } from '../optics/sun';
 import { addVisibleSun } from '../scenes/sunlight';
 import { applyAfternoonSky, afternoonSkyColor } from '../scenes/afternoonSky';
 
@@ -25,7 +26,9 @@ describe('physical path tracing scene', () => {
     expect(generated.bvh.raycastFirst(new THREE.Ray(new THREE.Vector3(), sky.sunDirection), THREE.DoubleSide)).toBeNull();
     const palette = ['#2679c5', '#c1def3', '#81856a'].map(value => new THREE.Color(value)) as [THREE.Color, THREE.Color, THREE.Color];
     const solarColor = afternoonSkyColor(sky.sunDirection, palette, new THREE.Color(), 0, sky.sunDirection);
-    expect(solarColor.r).toBeGreaterThan(10);
+    // The sky texture no longer contains an independently emitting solar disk.
+    expect(solarColor.r).toBeLessThan(3);
+    expect(physical.solar.light.intensity).toBeGreaterThan(10000);
     expect(scene.environmentIntensity).toBe(1);
     expect(physical.scene.environmentIntensity).toBe(scene.environmentIntensity);
     generated.geometry.dispose(); physical.dispose(); ground.geometry.dispose(); ground.material.dispose(); sky.dispose();
@@ -44,9 +47,9 @@ describe('physical path tracing scene', () => {
       distance: 20, groundHeight: 0, heightFalloff: 0 }, dispose() {} });
     physical.scene.updateMatrixWorld(true);
     const traced = physical.scene.getObjectByName(sun.name) as THREE.DirectionalLight;
-    expect(traced.intensity).toBe(4);
-    expect(traced.target.position.toArray()).toEqual([2, 2, -3]);
-    expect(traced.position.clone().sub(traced.target.position).normalize().toArray())
+    expect(traced).toBeInstanceOf(ShapedAreaLight);
+    expect(traced.intensity).toBe(solarRadiance(4));
+    expect(traced.position.clone().sub(new THREE.Vector3(2, 2, -3)).normalize().toArray())
       .toEqual(sun.position.clone().sub(new THREE.Vector3(2, 2, -3)).normalize().toArray());
     physical.dispose();
   });
@@ -64,6 +67,10 @@ describe('physical path tracing scene', () => {
     expect(camera.focusDistance).toBe(4);
     configurePhysicalCamera(camera, source, lens, false, 24);
     expect(camera.bokehSize).toBe(0);
+    configurePhysicalCamera(camera, source, { ...lens, focusM: Infinity }, true, 24);
+    expect(camera.focusDistance).toBe(1e8);
+    expect(Number.isFinite(camera.focusDistance)).toBe(true);
+    expect(camera.bokehSize).toBeCloseTo(85 / 1.8);
   });
 
   it('bakes instance transforms, normals, tint and mirrored winding into ray-intersectable geometry', () => {
@@ -107,10 +114,10 @@ describe('physical path tracing scene', () => {
     expect(physicalWater.material.ior).toBe(1.333);
     expect(physicalWater.material.transmission).toBeGreaterThan(0);
     expect(converted.scene.getObjectByName('path-traced-atmosphere')).toBeUndefined();
-    const light = converted.scene.children.find(object => object instanceof THREE.DirectionalLight) as THREE.DirectionalLight;
+    const light = converted.solar.light;
     expect(light).not.toBe(sun);
-    expect(light.position.equals(sun.position)).toBe(true);
-    expect(light.intensity).toBe(sun.intensity);
+    expect(light.position.clone().sub(sun.target.position).normalize().distanceTo(sun.position.clone().sub(sun.target.position).normalize())).toBeLessThan(1e-10);
+    expect(light.intensity).toBe(solarRadiance(sun.intensity));
     expect(converted.scene.environment!.mapping).toBe(THREE.EquirectangularReflectionMapping);
     converted.dispose();
     expect(source.children).toContain(water);

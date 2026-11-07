@@ -44,7 +44,7 @@ test('renders real 3D, connects optics to controls, focuses and resets', async (
     'aria-pressed',
     'false',
   );
-  await page.getByLabel('渲染质量').selectOption('low');
+  await page.getByLabel('渲染质量').selectOption('smooth');
   await page.getByRole('button', { name: '使用帮助' }).click();
   await expect(page.getByRole('dialog')).toBeVisible();
   await page.getByRole('button', { name: '开始探索' }).click();
@@ -165,6 +165,9 @@ test('switches scenes and applies special optics', async ({ page }) => {
   await lens.selectOption('fisheye-16');
   await expect(page.getByLabel('焦距', { exact: true })).toBeDisabled();
   await expect(page.locator('.optics-detail')).toContainText('鱼眼');
+  await expect(page.getByTestId('horizontal-fov')).toHaveText('136.9°');
+  await expect(page.locator('.optics-detail')).toContainText('170.1°');
+  await expect(page.locator('.optics-detail')).not.toContainText('对焦延伸视角');
   await lens.selectOption('ts-24');
   await expect(page.getByLabel('倾角', { exact: true })).toBeVisible();
   await expect(page.getByLabel('水平偏移', { exact: true })).toBeVisible();
@@ -206,7 +209,7 @@ test('afternoon sunlight renders in all scenes across quality, depth-of-field an
     await page.getByLabel('选择场景').selectOption(id);
     await expect(page.locator('.scene-subtitle')).toContainText('CLEAR AFTERNOON 16:00');
     await expect(page.getByTestId('canvas-host')).toHaveAttribute('data-status', 'ready');
-    for (const quality of ['low', 'balanced', 'high']) {
+    for (const quality of ['fine', 'balanced', 'performance', 'smooth']) {
       await page.getByLabel('渲染质量').selectOption(quality);
       await page.getByRole('button', { name: '景深预览' }).click();
       await page.evaluate(() => new Promise<void>(resolve => requestAnimationFrame(() => requestAnimationFrame(() => resolve()))));
@@ -228,7 +231,7 @@ test('path tracing accumulates real samples and returns to interactive rendering
   page.on('console', message => { if (message.type() === 'error') errors.push(message.text()); });
   await page.goto('/');
   await expect(page.getByTestId('canvas-host')).toHaveAttribute('data-status', 'ready');
-  await page.getByLabel('渲染质量').selectOption('low');
+  await page.getByLabel('渲染质量').selectOption('smooth');
   await page.getByLabel('渲染模式').selectOption('pathtraced');
   const host = page.getByTestId('canvas-host');
   await expect(host).toHaveAttribute('data-render-mode', 'pathtraced', { timeout: 120_000 });
@@ -236,8 +239,8 @@ test('path tracing accumulates real samples and returns to interactive rendering
   await expect(host).toHaveAttribute('data-path-denoised', 'true');
   await expect(host).toHaveAttribute('data-volumetric-light', 'true');
   await page.getByTestId('image-frame').screenshot({ path: `test-results/${test.info().project.name}-pathtraced.png` });
-  await expect(page.getByLabel('渲染质量').locator('option')).toHaveText(['画质', '均衡', '节能']);
-  for (const quality of ['high', 'balanced', 'low']) {
+  await expect(page.getByLabel('渲染质量').locator('option')).toHaveText(['精细（100%）', '均衡（85%）', '性能（70%）', '流畅（50%）']);
+  for (const quality of ['fine', 'balanced', 'performance', 'smooth']) {
     await page.getByLabel('渲染质量').selectOption(quality);
     await expect(page.getByLabel('渲染质量')).toHaveValue(quality);
     await page.evaluate(() => new Promise<void>(resolve => requestAnimationFrame(() => requestAnimationFrame(() => resolve()))));
@@ -274,7 +277,7 @@ test('plays a focus confirmation on successful focus and respects mute', async (
     };
   });
   await page.goto('/');
-  await page.getByLabel('渲染质量').selectOption('low');
+  await page.getByLabel('渲染质量').selectOption('smooth');
   await expect(page.getByTestId('canvas-host')).toHaveAttribute('data-status', 'ready', { timeout: 60_000 });
   const target = page.locator('.landmark').filter({ hasText: '陶瓶' });
   await target.click();

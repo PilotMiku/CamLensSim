@@ -1,6 +1,6 @@
 import type { CameraParameters, LensPreset, SensorPreset } from '../domain/types';
 import { subjectDistance } from '../domain/camera';
-import { fisheyeDiagonalDeg } from '../domain/projection';
+import { fisheyeDiagonalDeg, fisheyeFieldOfViewDeg } from '../domain/projection';
 
 /** Photopic reference wavelength used for the diffraction limit (550 nm). */
 export const WAVELENGTH_MM = 0.00055;
@@ -18,6 +18,8 @@ const positive = (value: number, label: string) => {
   return value;
 };
 
+const positiveDistance = (value: number, label: string) => value === Infinity ? value : positive(value, label);
+
 /** Textbook angle of view at infinity focus. */
 export function fieldOfViewDeg(sensorDimensionMm: number, focalLengthMm: number): number {
   return (
@@ -31,11 +33,14 @@ export function fieldOfViewDeg(sensorDimensionMm: number, focalLengthMm: number)
 }
 
 /** Thin-lens image distance for an object at s millimetres. */
-export function workingImageDistanceMm(focalLengthMm: number, focusDistanceM: number): number {
+export function workingImageDistanceMm(focalLengthMm: number, focusDistanceM: number, tiltDeg = 0): number {
   const f = positive(focalLengthMm, 'Focal length');
-  const s = positive(focusDistanceM, 'Focus distance') * 1000;
+  const s = positiveDistance(focusDistanceM, 'Focus distance') * 1000;
   if (s <= f) throw new RangeError('Focus distance must exceed focal length');
-  return (f * s) / (s - f);
+  if (!Number.isFinite(tiltDeg) || Math.abs(tiltDeg) >= 90) throw new RangeError('Invalid lens tilt');
+  const denominator = Math.cos(tiltDeg * Math.PI / 180) - f / s;
+  if (denominator <= 0) throw new RangeError('Focus plane requires a positive image distance');
+  return f / denominator;
 }
 
 /**
@@ -46,9 +51,10 @@ export function workingFovDeg(
   sensorDimensionMm: number,
   focalLengthMm: number,
   focusDistanceM: number,
+  tiltDeg = 0,
 ): number {
   const dimension = positive(sensorDimensionMm, 'Sensor size');
-  const imageDistanceMm = workingImageDistanceMm(focalLengthMm, focusDistanceM);
+  const imageDistanceMm = workingImageDistanceMm(focalLengthMm, focusDistanceM, tiltDeg);
   return (2 * Math.atan(dimension / (2 * imageDistanceMm)) * 180) / Math.PI;
 }
 
@@ -80,12 +86,12 @@ export function depthOfField(
   const f = positive(focalLengthMm, 'Focal length');
   const n = positive(aperture, 'Aperture');
   const c = positive(cocMm, 'Circle of confusion');
-  const s = positive(focusDistanceM, 'Focus distance') * 1000;
+  const s = positiveDistance(focusDistanceM, 'Focus distance') * 1000;
   if (s <= f) throw new RangeError('Focus distance must exceed focal length');
   // Thin lens image-plane model. q = H - f, so far DOF becomes infinite exactly at H.
   const q = (f * f) / (n * c);
   const hyperfocalM = (q + f) / 1000;
-  const nearM = (q * s) / (q + s - f) / 1000;
+  const nearM = s === Infinity ? q / 1000 : (q * s) / (q + s - f) / 1000;
   const farM = s >= q + f ? Infinity : (q * s) / (q - s + f) / 1000;
   return { nearM, farM, totalM: farM - nearM, hyperfocalM };
 }
@@ -99,13 +105,62 @@ export function blurCircleMm(
 ) {
   const f = positive(focalLengthMm, 'Focal length');
   const n = positive(aperture, 'Aperture');
-  const s = positive(focusDistanceM, 'Focus distance') * 1000;
-  const u = positive(objectDistanceM, 'Object distance') * 1000;
+  const s = positiveDistance(focusDistanceM, 'Focus distance') * 1000;
+  const u = positiveDistance(objectDistanceM, 'Object distance') * 1000;
   if (s <= f) throw new RangeError('Focus distance must exceed focal length');
+  if (s === Infinity) return u === Infinity ? 0 : (f * f) / (n * u);
+  if (u === Infinity) return (f * f) / (n * (s - f));
   return (f * f * Math.abs(s - u)) / (n * u * (s - f));
 }
 
-/** ISO-normalised exposure value. Larger means less light reaching the sensor. */
+/**
+ * Ideal tilted thin lens, with camera coordinates y up, z forward. The focus
+ * plane obeys z/s - y sin(alpha)/f = 1. Its hinge is y=-f/sin(alpha), z=0.
+ * s is the optical-axis intercept, NOT distance along the tilted lens normal.
+ * Image plane z=-v follows v=f/(cos(alpha)-f/s). All inverse distances use metres.
+ * See Merklinger, Focusing the View Camera, pp. 31–35 (hinge and Scheimpflug rules).
+ */
+export function tiltFocusModel(focalMm: number, focusM: number, tiltDeg: number) {
+  const imageDistanceMm = workingImageDistanceMm(focalMm, focusM, tiltDeg);
+  const inverseFocusM = 1 / focusM;
+  const gradientPerM = Math.sin(tiltDeg * Math.PI / 180) / (focalMm / 1000);
+  return {
+    imageDistanceMm, inverseFocusM, gradientPerM,
+    planeTiltDeg: gradientPerM === 0 ? 0 : Math.atan2(gradientPerM, inverseFocusM) * 180 / Math.PI,
+    hingeHeightM: gradientPerM === 0 ? Infinity : -1 / gradientPerM,
+  };
+}
+
+/** Signed horizontal CoC diameter. The projected aperture ellipse is approximated by a circular kernel. */
+export function signedTiltBlurMm(focalMm: number, aperture: number, focusM: number,
+  tiltDeg: number, objectM: number, raySlopeY: number) {
+  const model = tiltFocusModel(focalMm, focusM, tiltDeg);
+  positiveDistance(objectM, 'Object distance');
+  positive(aperture, 'Aperture');
+  if (!Number.isFinite(raySlopeY)) throw new RangeError('Invalid ray slope');
+  return (focalMm / aperture) * (model.imageDistanceMm / 1000)
+    * (model.inverseFocusM - 1 / objectM - model.gradientPerM * raySlopeY);
+}
+
+/** DOF slice along the camera optical axis (y=0), not the whole tilted DOF wedge. */
+export function tiltedAxisDepthOfField(focalMm: number, aperture: number, focusM: number,
+  tiltDeg: number, cocMm: number) {
+  const model = tiltFocusModel(focalMm, focusM, tiltDeg);
+  const tolerancePerM = positive(cocMm, 'Circle of confusion')
+    / ((focalMm / positive(aperture, 'Aperture')) * (model.imageDistanceMm / 1000));
+  const nearM = 1 / (model.inverseFocusM + tolerancePerM);
+  const farM = model.inverseFocusM > tolerancePerM ? 1 / (model.inverseFocusM - tolerancePerM) : Infinity;
+  return { nearM, farM, totalM: farM - nearM };
+}
+
+/** Positive-axis focus needed for a selected finite world point; null means beyond the supported focusing range. */
+export function tiltFocusDistanceForPoint(focalMm: number, tiltDeg: number, axialM: number, verticalM: number): number | null {
+  if (axialM <= 0 || !Number.isFinite(axialM) || !Number.isFinite(verticalM)) return null;
+  const inverse = (1 + Math.sin(tiltDeg * Math.PI / 180) * verticalM / (focalMm / 1000)) / axialM;
+  return inverse > 0 ? 1 / inverse : null;
+}
+
+/** ISO-normalised exposure setting. Larger means darker output for the same scene radiance. */
 export function exposureValue(
   aperture: number,
   shutterSeconds: number,
@@ -131,6 +186,8 @@ export function calculateOptics(
   const focal = parameters.focalLengthMm;
   const aperture = parameters.aperture;
   const focus = parameters.focusDistanceM;
+  const tilt = lens?.kind === 'tilt-shift' ? parameters.tiltDeg : 0;
+  const focusModel = tiltFocusModel(focal, focus, tilt);
   const crop = cropFactor(sensor);
   const cocMm = circleOfConfusionMm(sensor);
   const diffractionMm = diffractionCocMm(aperture);
@@ -139,26 +196,36 @@ export function calculateOptics(
     horizontalFovDeg: fieldOfViewDeg(sensor.widthMm, focal),
     verticalFovDeg: fieldOfViewDeg(sensor.heightMm, focal),
     diagonalFovDeg: fieldOfViewDeg(Math.hypot(sensor.widthMm, sensor.heightMm), focal),
-    workingHorizontalFovDeg: workingFovDeg(sensor.widthMm, focal, focus),
-    workingVerticalFovDeg: workingFovDeg(sensor.heightMm, focal, focus),
+    workingHorizontalFovDeg: workingFovDeg(sensor.widthMm, focal, focus, tilt),
+    workingVerticalFovDeg: workingFovDeg(sensor.heightMm, focal, focus, tilt),
     cropFactor: crop,
     equivalentFocalMm: focal * crop,
     cocMm,
     diffractionMm,
     effectiveCocMm: Math.hypot(cocMm, diffractionMm),
-    magnification: focal / (focus * 1000 - focal),
+    magnification: focusModel.imageDistanceMm / (focus * 1000),
     subjectDistanceM: subjectDistance(parameters.pose),
     lensKind: lens?.kind,
     fisheyeDiagonalDeg: fisheyeDiagonalDeg(focal, sensor),
-    fisheyeHorizontalDeg: (2 * Math.asin(Math.min(sensor.widthMm / (4 * focal), 1)) * 180) / Math.PI,
-    fisheyeVerticalDeg: (2 * Math.asin(Math.min(sensor.heightMm / (4 * focal), 1)) * 180) / Math.PI,
+    fisheyeHorizontalDeg: fisheyeFieldOfViewDeg(sensor.widthMm, focal),
+    fisheyeVerticalDeg: fisheyeFieldOfViewDeg(sensor.heightMm, focal),
     ev100,
     exposureScale: exposureScale(ev100),
     ...depthOfField(focal, aperture, focus, cocMm),
+    ...(tilt !== 0 ? tiltedAxisDepthOfField(focal, aperture, focus, tilt, cocMm) : {}),
+    tilted: tilt !== 0,
+    focusPlaneTiltDeg: focusModel.planeTiltDeg,
   };
 }
 
 export type OpticsResult = ReturnType<typeof calculateOptics>;
+
+/** Three significant digits keep small positive magnifications distinct from infinity focus (0x). */
+export function formatMagnification(value: number): string {
+  if (!Number.isFinite(value) || value < 0) return '—';
+  if (value === 0) return '0×';
+  return `${Number(value.toPrecision(3))}×`;
+}
 
 export function formatDistance(value: number): string {
   if (!Number.isFinite(value)) return '∞';

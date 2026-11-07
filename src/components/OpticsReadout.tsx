@@ -1,7 +1,6 @@
-import { formatDistance, formatEv, type OpticsResult } from '../optics/calculate';
+import { formatDistance, formatEv, formatMagnification, type OpticsResult } from '../optics/calculate';
 
 export function OpticsReadout({ optics: o }: { optics: OpticsResult }) {
-  const magnification = o.magnification > 0 ? `1:${Math.round(1 / o.magnification)}` : '—';
   const hyperfocal = o.hyperfocalM >= 100 ? o.hyperfocalM.toFixed(0) : o.hyperfocalM.toFixed(2);
   const projection =
     o.lensKind === 'fisheye'
@@ -37,7 +36,7 @@ export function OpticsReadout({ optics: o }: { optics: OpticsResult }) {
       </div>
       <div className="metric">
         <span>
-          总景深 <small>DOF</small>
+          {o.tilted ? '光轴截面景深' : '总景深'} <small>DOF</small>
         </span>
         <strong data-testid="total-dof">
           {Number.isFinite(o.totalM) ? o.totalM.toFixed(2) : '∞'}
@@ -49,7 +48,7 @@ export function OpticsReadout({ optics: o }: { optics: OpticsResult }) {
       </div>
       <div className="metric">
         <span>
-          超焦距 <small>H</small>
+          {o.tilted ? '零倾角超焦距参考' : '超焦距'} <small>H</small>
         </span>
         <strong>
           {hyperfocal}
@@ -58,7 +57,13 @@ export function OpticsReadout({ optics: o }: { optics: OpticsResult }) {
         <p>容许弥散圈 {o.cocMm.toFixed(3)} mm</p>
       </div>
       <p className="optics-detail">
-        {projection} · 对焦延伸视角 {o.workingHorizontalFovDeg.toFixed(1)}° · 放大率 {magnification}{' '}
+        {projection}
+        {o.lensKind !== 'fisheye' && ` · 对焦延伸视角 ${o.workingHorizontalFovDeg.toFixed(1)}°`}
+        {o.tilted && ` · 焦平面倾角 ${o.focusPlaneTiltDeg.toFixed(1)}°（相对传感器）`}
+        {' · 放大率 '}
+        <span data-testid="magnification" title="薄透镜近轴模型的像物尺寸比；1× 表示等大成像，移轴时为光轴交点处的水平倍率。">
+          {formatMagnification(o.magnification)}
+        </span>{' '}
         · 衍射斑 {o.diffractionMm.toFixed(3)} mm · EV₁₀₀ {formatEv(o.ev100)} · 距主体{' '}
         {o.subjectDistanceM.toFixed(2)} m
       </p>

@@ -75,7 +75,7 @@ test('keeps fixed shadow-tested light shafts active in every scene', async ({ pa
   page.on('pageerror', error => errors.push(error.message));
   page.on('console', message => { if (message.type() === 'error') errors.push(message.text()); });
   await page.goto('/');
-  await page.getByLabel('渲染质量').selectOption('low');
+  await page.getByLabel('渲染质量').selectOption('smooth');
   for (const id of ['indoor', 'outdoor', 'portrait', 'animal']) {
     await page.getByLabel('选择场景').selectOption(id);
     await expect(page.getByTestId('canvas-host')).toHaveAttribute('data-status', 'ready');
@@ -92,7 +92,7 @@ test('traces sunlight and physical lamp fixtures in all four scenes', async ({ p
   page.on('pageerror', error => errors.push(error.message));
   page.on('console', message => { if (message.type() === 'error') errors.push(message.text()); });
   await page.goto('/');
-  await page.getByLabel('渲染质量').selectOption('low');
+  await page.getByLabel('渲染质量').selectOption('smooth');
   const host = page.getByTestId('canvas-host');
   for (const id of ['indoor', 'outdoor', 'portrait', 'animal']) {
     await page.getByLabel('选择场景').selectOption(id);

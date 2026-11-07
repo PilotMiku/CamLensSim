@@ -6,8 +6,9 @@ import { Icon } from './components/Icon';
 import { OpticsReadout } from './components/OpticsReadout';
 import { Viewfinder } from './components/Viewfinder';
 import { ReferenceDialog } from './components/ReferenceDialog';
-import { getLens, getSensor } from './data/equipment';
+import { RENDER_QUALITY, RENDER_QUALITY_ORDER } from './data/renderQuality';
 import type { RenderQuality } from './domain/types';
+import { getLens, getSensor } from './data/equipment';
 import { calculateOptics } from './optics/calculate';
 import { SCENES, getScene } from './scenes/registry';
 import { useSimulator } from './state/simulator';
@@ -119,9 +120,11 @@ export function App() {
                       })
                     }
                   >
-                    <option value="high">画质</option>
-                    <option value="balanced">均衡</option>
-                    <option value="low">节能</option>
+                    {RENDER_QUALITY_ORDER.map(quality => (
+                      <option key={quality} value={quality}>
+                        {RENDER_QUALITY[quality].label}（{Math.round(RENDER_QUALITY[quality].resolutionScale * 100)}%）
+                      </option>
+                    ))}
                   </select>
                 </label>
               </div>

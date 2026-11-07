@@ -50,7 +50,7 @@ export interface CameraParameters {
   lensId: string;
   focalLengthMm: number;
   aperture: number;
-  /** Axial distance from the camera to the plane of focus, in metres. */
+  /** Axial focus distance in metres; positive Infinity means infinity focus. */
   focusDistanceM: number;
   /** When true the focus plane stays anchored to focusPoint while the camera moves. */
   focusTracking: boolean;
@@ -58,16 +58,16 @@ export interface CameraParameters {
   pose: CameraPose;
   iso: number;
   shutterSeconds: number;
-  /** Keep the preview brightness fixed while aperture/shutter/ISO change. */
+  /** Keep the display exposure multiplier fixed while aperture/shutter/ISO change. */
   constantExposure: boolean;
-  /** Lens tilt around the camera's horizontal axis, in degrees (tilt-shift). */
+  /** Lens tilt in degrees; positive tips the lens downward, raising the focus plane with camera y. */
   tiltDeg: number;
   /** Lens shift as a fraction of the half sensor dimension, -1..1 (tilt-shift). */
   shiftX: number;
   shiftY: number;
 }
 
-export type RenderQuality = 'high' | 'balanced' | 'low';
+export type RenderQuality = 'fine' | 'balanced' | 'performance' | 'smooth';
 
 export interface ViewSettings {
   focusSound: boolean;

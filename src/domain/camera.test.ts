@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   axialDistance,
   axialDistanceOrNull,
+  cameraVerticalDistance,
   clampPose,
   forwardVector,
   pointOnAxis,
@@ -65,4 +66,12 @@ describe('camera pose', () => {
     expect(Math.hypot(offAxis.x, offAxis.z)).toBeCloseTo(2, 10);
     expect(offAxis.x).toBeCloseTo(1.2, 10);
   });
+});
+
+
+it('measures height in the pitched and yawed camera frame', () => {
+  const turned = { ...pose, yawDeg: 90, pitchDeg: 30 };
+  const point = { x: 1, y: pose.y + Math.sqrt(3), z: pose.z };
+  expect(cameraVerticalDistance(turned, point)).toBeCloseTo(2, 10);
+  expect(axialDistance(turned, point)).toBeCloseTo(0, 10);
 });

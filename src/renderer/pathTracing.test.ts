@@ -19,8 +19,14 @@ vi.mock('three-gpu-pathtracer', async importOriginal => {
   };
 });
 
+// Solar shader compatibility has its own tests; this mock isolates resolution/reset behavior.
+vi.mock('./physicalSun', async importOriginal => {
+  const original = await importOriginal<typeof import('./physicalSun')>();
+  return { ...original, installTracerSolarBackground: vi.fn() };
+});
+
 describe('path tracing quality', () => {
-  it('switches between full, balanced and low resolution and resets accumulation', () => {
+  it('keeps native tracer resolution after renderer scaling and resets accumulation', () => {
     const renderer = { extensions: { has: () => true } } as unknown as THREE.WebGLRenderer;
     const camera = new THREE.PerspectiveCamera(30, 1.5, 0.08, 80);
     const preview = new PathTracingPreview(renderer, {
@@ -31,13 +37,13 @@ describe('path tracing quality', () => {
     const tracer = vi.mocked(WebGLPathTracer).mock.instances[0];
     const lens = { focalMm: 50, aperture: 1.8, focusM: 2.4, blades: 9 };
     try {
-      for (const [quality, scale] of [
-        ['balanced', 0.7], ['high', 1], ['low', 0.45], ['high', 1], ['balanced', 0.7],
-      ] as const) {
+      // Quality is now applied once to the renderer drawing buffer, not multiplied here.
+      for (const previousScale of [0.45, 0.7, 0.85, 1]) {
+        tracer.renderScale = previousScale;
         vi.mocked(tracer.reset).mockClear();
         vi.mocked(tracer.updateCamera).mockClear();
-        preview.update(camera, lens, true, quality, 24);
-        expect(tracer.renderScale).toBe(scale);
+        preview.update(camera, lens, true, 24);
+        expect(tracer.renderScale).toBe(1);
         expect(tracer.updateCamera).toHaveBeenCalledOnce();
         expect(tracer.reset).toHaveBeenCalledOnce();
       }

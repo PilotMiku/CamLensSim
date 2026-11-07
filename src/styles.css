@@ -1768,8 +1768,8 @@ kbd {
 }
 
 @media (max-width: 760px) {
-  .scene-heading { flex-wrap: wrap; row-gap: 8px; }
-  .scene-heading .scene-actions { flex-wrap: wrap; gap: 8px; }
+  .scene-heading { height: auto; min-height: 33px; flex-wrap: wrap; row-gap: 8px; }
+  .scene-heading .scene-actions { flex-wrap: wrap; flex-shrink: 1; max-width: 100%; gap: 8px; }
   .viewer-toolbar { flex-wrap: wrap; gap: 8px; }
   .viewer-tools { flex-wrap: wrap; }
 }

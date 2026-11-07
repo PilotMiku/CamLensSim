@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { GradientEquirectTexture } from 'three-gpu-pathtracer';
+import { createPhysicalSun } from './physicalSun';
 import { bakeEnvironmentFill } from './pathTracingEnvironment';
 import type { SceneInstance } from '../scenes/types';
 
@@ -53,7 +54,7 @@ export function bakeInstances(mesh: THREE.InstancedMesh) {
 export function createPathTracingScene(world: SceneInstance) {
   const scene = new THREE.Scene();
   const ownedGeometry = new Set<THREE.BufferGeometry>(), ownedMaterials = new Set<THREE.Material>();
-  const environment = world.sky?.environment.clone() ?? new GradientEquirectTexture(128);
+  const environment = world.sky?.lightingEnvironment.clone() ?? new GradientEquirectTexture(128);
   if (environment instanceof GradientEquirectTexture) {
     environment.topColor.set('#9cbdd7'); environment.bottomColor.set('#6a7056'); environment.update();
   }
@@ -61,8 +62,10 @@ export function createPathTracingScene(world: SceneInstance) {
   const hasFill = bakeEnvironmentFill(world.scene, environment);
   scene.environment = environment;
   scene.environmentIntensity = hasFill && world.scene.environmentIntensity === 0 ? 1 : world.scene.environmentIntensity;
-  scene.background = world.sky ? world.sky.environment : world.scene.background instanceof THREE.Color ? world.scene.background.clone() : new THREE.Color('#b6c8d2');
-  const lights = new Set<THREE.Light>();
+  scene.background = world.sky ? world.sky.lightingEnvironment : world.scene.background instanceof THREE.Color ? world.scene.background.clone() : new THREE.Color('#b6c8d2');
+  const solar = createPhysicalSun(world.sunlight.sun);
+  scene.add(solar.light);
+  const lights = new Set<THREE.Light>([world.sunlight.sun]);
   const addLight = (object: THREE.Light) => {
     if (lights.has(object)) return;
     lights.add(object);
@@ -79,7 +82,7 @@ export function createPathTracingScene(world: SceneInstance) {
   };
   // The same authoritative sun drives surface lighting and the volume pass.
   // Do not depend on a scene traversal to discover this source.
-  if (world.sunlight.sun.visible) addLight(world.sunlight.sun);
+  // The authoritative sun is represented once by the finite disk above.
   world.scene.traverseVisible(object => {
     if (object instanceof THREE.Light && !(object instanceof THREE.HemisphereLight) && !(object instanceof THREE.AmbientLight)) {
       addLight(object); return;
@@ -120,7 +123,7 @@ export function createPathTracingScene(world: SceneInstance) {
   });
   // Single scattering is integrated by the shared shadow-tested sunlight pass.
   // A stochastic fog volume here would add low-sample noise and double the medium.
-  return { scene, dispose() {
+  return { scene, solar, syncSun: solar.sync, dispose() {
     ownedGeometry.forEach(g => g.dispose()); ownedMaterials.forEach(m => m.dispose()); environment.dispose(); scene.clear();
   } };
 }

@@ -14,11 +14,13 @@ test('sunlight independently illuminates a street lamp with its bulb and sky swi
     const fixtureModule = '/src/scenes/fixtures.ts';
     const sunModule = '/src/scenes/sunlight.ts';
     const skyModule = '/src/scenes/afternoonSky.ts';
+    const solarModule = '/src/renderer/physicalSun.ts';
     const THREE = await import(threeModule), { WebGLPathTracer } = await import(tracerModule);
     const { createPathTracingScene } = await import(sceneModule);
     const { addStreetLamp } = await import(fixtureModule);
     const { addVisibleSun } = await import(sunModule);
     const { OUTDOOR_SUN_DIRECTION: sunDirection } = await import(skyModule);
+    const { installTracerSolarBackground } = await import(solarModule);
     const renderer = new THREE.WebGLRenderer(); renderer.setSize(96, 96);
     const scene = new THREE.Scene();
     const sun = new THREE.DirectionalLight('#ffecd0', 4);
@@ -36,12 +38,12 @@ test('sunlight independently illuminates a street lamp with its bulb and sky swi
     camera.position.copy(sun.target.position).addScaledVector(sunDirection, 6);
     camera.lookAt(0.25, 1.55, 0); camera.updateMatrixWorld(true);
     const tracer = new WebGLPathTracer(renderer);
+    installTracerSolarBackground(tracer, physical.solar);
     tracer.renderToCanvas = false; tracer.renderDelay = 0; tracer.bounces = 3;
     tracer.textureSize.set(64, 64); tracer.tiles.set(1, 1); tracer.stableNoise = true;
     tracer.setScene(physical.scene, camera);
-    const tracedSun = physical.scene.getObjectByName(sun.name);
     const readEnergy = async (intensity: number) => {
-      tracedSun.intensity = intensity; tracer.updateLights();
+      sun.intensity = intensity; physical.syncSun(); tracer.updateLights();
       while (tracer.samples < 24) {
         tracer.renderSample();
         await new Promise<void>(resolve => requestAnimationFrame(() => resolve()));

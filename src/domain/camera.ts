@@ -40,7 +40,8 @@ export const OUTDOOR_POSE_LIMITS: PoseLimits = {
 };
 
 export const MIN_FOCUS_M = 0.3;
-export const MAX_FOCUS_M = 30;
+/** Finite focus controls cover up to 100 km; positive Infinity represents infinity focus. */
+export const MAX_FOCUS_M = 100_000;
 
 export const clamp = (value: number, min: number, max: number) =>
   Math.min(max, Math.max(min, value));
@@ -86,6 +87,14 @@ export function axialDistance(pose: CameraPose, point: Vec3): number {
     (point.y - pose.y) * forward.y +
     (point.z - pose.z) * forward.z
   );
+}
+
+/** Height in the camera frame, independent of yaw and pitch. */
+export function cameraVerticalDistance(pose: CameraPose, point: Vec3): number {
+  const yaw = pose.yawDeg * DEG, pitch = pose.pitchDeg * DEG;
+  return (point.x - pose.x) * Math.sin(yaw) * Math.sin(pitch)
+    + (point.y - pose.y) * Math.cos(pitch)
+    + (point.z - pose.z) * Math.cos(yaw) * Math.sin(pitch);
 }
 
 export function pointOnAxis(pose: CameraPose, distanceM: number): Vec3 {
