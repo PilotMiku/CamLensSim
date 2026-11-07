@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { DEFAULT_POSE_LIMITS, forwardVector } from '../domain/camera';
+import { DEFAULT_POSE_LIMITS, forwardVector, wrapDegrees } from '../domain/camera';
 import { advanceCameraMotion, type CameraMotionTarget } from './cameraMotion';
 
 const pose = { x: 0, y: 1.3, z: 4.6, yawDeg: 0, pitchDeg: 0 };
@@ -43,5 +43,14 @@ describe('camera movement under slow rendering', () => {
     const long = simulate([20]);
     expect(long.pose.z).toBe(DEFAULT_POSE_LIMITS.minZ);
     for (const seconds of [0, -1, Infinity, NaN]) expect(simulate([seconds])).toEqual({ pose, velocity: stopped });
+  });
+
+  it('keeps turn direction across both yaw wrap boundaries in a delayed frame', () => {
+    for (const [start, rate] of [[175, 68], [-175, -68]]) {
+      const result = advanceCameraMotion({ ...pose, yawDeg: start }, stopped,
+        { ...stopped, yaw: rate, pitch: 0 }, 0.25, DEFAULT_POSE_LIMITS);
+      expect(Math.sign(result.pose.yawDeg)).toBe(-Math.sign(start));
+      expect(wrapDegrees(result.pose.yawDeg - start)).toBeCloseTo(rate * 0.25, 10);
+    }
   });
 });

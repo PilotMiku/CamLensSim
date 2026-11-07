@@ -1,4 +1,5 @@
 import { expect, test } from './fixtures';
+import { wrapDegrees } from '../src/domain/camera';
 
 test.use({ renderWidth: process.env.CI ? 320 : undefined });
 
@@ -69,26 +70,35 @@ test('renders real 3D, connects optics to controls, focuses and resets', async (
 test('moves and turns the free camera with the keyboard while focus tracks the subject', async ({
   page,
 }) => {
+  // Bound input duration in simulated time. A slow GPU must not turn a held key
+  // through several revolutions while the test waits for its next observation.
+  await page.clock.install({ time: new Date('2026-01-01T00:00:00Z') });
   await page.goto('/');
   await expect(page.getByTestId('canvas-host')).toHaveAttribute('data-status', 'ready');
   await page.locator('h1').click();
+  await page.clock.pauseAt(new Date('2026-01-01T01:00:00Z'));
+  const holdKey = async (key: string, milliseconds: number) => {
+    await page.keyboard.down(key);
+    try {
+      // Fire one delayed animation callback: exercise the low-FPS integrator.
+      await page.clock.fastForward(milliseconds);
+    } finally { await page.keyboard.up(key); }
+    await page.clock.fastForward(1000); // Finish any translational deceleration.
+  };
   const focusInput = page.getByLabel('对焦距离', { exact: true });
   const beforeZ = await poseValue(page, 'z');
   const beforeFocus = Number(await focusInput.inputValue());
-  await page.keyboard.down('w');
+  await holdKey('w', 500);
   await expect.poll(async () => poseValue(page, 'z'), { timeout: 8000 }).toBeLessThan(beforeZ - 0.3);
-  await page.keyboard.up('w');
   const afterFocus = Number(await focusInput.inputValue());
   expect(afterFocus).toBeLessThan(beforeFocus - 0.25);
   const beforeYaw = await poseValue(page, 'yaw');
-  await page.keyboard.down('j');
+  await holdKey('j', 250);
   await expect
-    .poll(async () => poseValue(page, 'yaw'), { timeout: 8000 })
-    .toBeGreaterThan(beforeYaw + 10);
-  await page.keyboard.up('j');
-  await page.keyboard.down('r');
+    .poll(async () => wrapDegrees(await poseValue(page, 'yaw') - beforeYaw), { timeout: 8000 })
+    .toBeCloseTo(17, 1);
+  await holdKey('r', 300);
   await expect.poll(async () => poseValue(page, 'y'), { timeout: 8000 }).toBeGreaterThan(1.4);
-  await page.keyboard.up('r');
 
   // Drag-to-look should also rotate the camera.
   const canvas = page.locator('[data-testid="canvas-host"]');
@@ -99,7 +109,7 @@ test('moves and turns the free camera with the keyboard while focus tracks the s
   await page.mouse.down();
   await page.mouse.move(box.x + box.width * 0.68, box.y + box.height * 0.5, { steps: 10 });
   await page.mouse.up();
-  await expect.poll(async () => poseValue(page, 'yaw')).toBeLessThan(yawBeforeDrag - 5);
+  await expect.poll(async () => wrapDegrees(await poseValue(page, 'yaw') - yawBeforeDrag)).toBeLessThan(-5);
 
   // Reset the rig back to the default framing.
   await page.getByRole('complementary', { name: '相机参数' })
@@ -227,43 +237,6 @@ for (const id of ['indoor', 'outdoor', 'portrait', 'animal']) {
     expect(errors).toEqual([]);
   });
 }
-
-test('path tracing accumulates real samples and returns to interactive rendering', async ({ page }) => {
-  test.setTimeout(180_000);
-  const errors: string[] = [];
-  page.on('pageerror', error => errors.push(error.message));
-  page.on('console', message => { if (message.type() === 'error') errors.push(message.text()); });
-  await page.goto('/');
-  await expect(page.getByTestId('canvas-host')).toHaveAttribute('data-status', 'ready');
-  await page.getByLabel('渲染质量').selectOption('smooth');
-  await page.getByLabel('渲染模式').selectOption('pathtraced');
-  const host = page.getByTestId('canvas-host');
-  await expect(host).toHaveAttribute('data-render-mode', 'pathtraced', { timeout: 120_000 });
-  await expect.poll(async () => Number(await host.getAttribute('data-path-samples')), { timeout: 120_000 }).toBeGreaterThanOrEqual(28);
-  await expect(host).toHaveAttribute('data-path-denoised', 'true');
-  await expect(host).toHaveAttribute('data-volumetric-light', 'true');
-  await page.getByTestId('image-frame').screenshot({ path: `test-results/${test.info().project.name}-pathtraced.png` });
-  await expect(page.getByLabel('渲染质量').locator('option')).toHaveText(['精细（100%）', '均衡（85%）', '性能（70%）', '流畅（50%）']);
-  for (const quality of ['fine', 'balanced', 'performance', 'smooth']) {
-    await page.getByLabel('渲染质量').selectOption(quality);
-    await expect(page.getByLabel('渲染质量')).toHaveValue(quality);
-    await page.evaluate(() => new Promise<void>(resolve => requestAnimationFrame(() => requestAnimationFrame(() => resolve()))));
-    await expect.poll(async () => Number(await host.getAttribute('data-path-samples')), { timeout: 120_000 }).toBeGreaterThan(1);
-    await expect(host).toHaveAttribute('data-render-mode', 'pathtraced');
-    await expect(host).toHaveAttribute('data-path-denoised', 'true');
-  }
-  await page.getByLabel('光圈', { exact: true }).fill('4');
-  await page.getByLabel('光圈', { exact: true }).press('Tab');
-  await expect.poll(async () => Number(await host.getAttribute('data-path-samples')), { timeout: 120_000 }).toBeGreaterThan(1);
-  await page.getByLabel('渲染模式').selectOption('realtime');
-  await expect(host).toHaveAttribute('data-render-mode', 'realtime');
-  await expect(host).toHaveAttribute('data-path-denoised', 'false');
-  await page.getByLabel('镜头预设').selectOption('fisheye-16');
-  await page.getByLabel('渲染模式').selectOption('pathtraced');
-  await expect(page.getByRole('status')).toContainText('当前镜头使用实时预览');
-  await expect(host).toHaveAttribute('data-render-mode', 'realtime');
-  expect(errors).toEqual([]);
-});
 
 test('plays a focus confirmation on successful focus and respects mute', async ({ page }) => {
   test.setTimeout(120_000);

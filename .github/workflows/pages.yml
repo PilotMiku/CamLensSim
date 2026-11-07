@@ -14,10 +14,14 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  verify-pull-request:
-    if: github.event_name == 'pull_request'
+  verify:
+    name: Verify shard ${{ matrix.shard }}/2
     runs-on: ubuntu-24.04
     timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [1, 2]
     steps:
       - uses: actions/checkout@v6
       - uses: actions/setup-node@v6
@@ -28,21 +32,22 @@ jobs:
       - run: npm run typecheck
       - run: npm test
       - run: npx playwright install --with-deps chromium
-      - name: Verify all desktop WebGL and interaction tests
-        run: npm run test:e2e -- --project=desktop
+      - name: Verify desktop WebGL and interaction tests
+        run: npm run test:e2e -- --project=desktop --shard=${{ matrix.shard }}/2
         env:
           PLAYWRIGHT_CHANNEL: chromium
       - name: Save browser diagnostics on failure
         if: failure()
         uses: actions/upload-artifact@v7
         with:
-          name: pr-browser-failure-diagnostics
+          name: browser-failure-diagnostics-${{ matrix.shard }}
           path: test-results/
       - run: npm run build
         env:
           VITE_BASE_PATH: /CamLensSim/
 
   publish:
+    needs: verify
     if: github.event_name != 'pull_request'
     runs-on: ubuntu-24.04
     timeout-minutes: 30
@@ -60,20 +65,6 @@ jobs:
           node-version: 24
           cache: npm
       - run: npm ci
-      - run: npm run typecheck
-      - run: npm test
-      - name: Install browser for interaction checks
-        run: npx playwright install --with-deps chromium
-      - name: Verify all desktop WebGL and interaction tests
-        run: npm run test:e2e -- --project=desktop
-        env:
-          PLAYWRIGHT_CHANNEL: chromium
-      - name: Save browser diagnostics on failure
-        if: failure()
-        uses: actions/upload-artifact@v7
-        with:
-          name: browser-failure-diagnostics
-          path: test-results/
       - name: Configure Pages
         id: pages
         uses: actions/configure-pages@v6

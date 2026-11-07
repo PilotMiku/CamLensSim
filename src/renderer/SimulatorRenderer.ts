@@ -88,6 +88,7 @@ export class SimulatorRenderer {
   private tracePreparing = false;
   private traceFailed = false;
   private traceDirty = true;
+  private traceGeneration = 0;
   private lastTraceUpdate = 0;
   private traceSignature = '';
   private reportedTraceStatus = '';
@@ -645,6 +646,9 @@ export class SimulatorRenderer {
       try {
         if (this.traceDirty) {
           this.pathPreview.update(this.camera, this.lens, this.dofEnabled, this.sensor?.heightMm ?? 24);
+          // A completed reset, rather than stale sample counts from the previous
+          // camera/quality configuration, identifies each accumulation cycle.
+          this.host.dataset.pathGeneration = String(++this.traceGeneration);
           // Cache depth, surface color and fixed-light shadows once per camera change.
           this.renderer.setRenderTarget(sceneTarget);
           this.renderer.render(this.world.scene, this.camera);
