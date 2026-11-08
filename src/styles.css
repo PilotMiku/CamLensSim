@@ -47,6 +47,10 @@ button:disabled,
 input:disabled {
   cursor: not-allowed;
 }
+.segmented button:disabled,
+.toggle-row:disabled {
+  opacity: 0.45;
+}
 select {
   color: inherit;
   cursor: pointer;

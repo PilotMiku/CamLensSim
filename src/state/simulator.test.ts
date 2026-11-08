@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { axialDistance, cameraVerticalDistance, radialDistance } from '../domain/camera';
-import { DEFAULT_POSE, snapAperture, getLens } from '../data/equipment';
-import { signedTiltBlurMm } from '../optics/calculate';
+import { DEFAULT_POSE, snapAperture, getLens, getSensor } from '../data/equipment';
+import { signedTiltBlurMm, workingFovDeg } from '../optics/calculate';
 import { initialState, simulatorReducer } from './simulator';
 
 describe('camera constraints', () => {
@@ -182,5 +182,63 @@ describe('fisheye radial focus', () => {
     expect(turned.parameters.focusDistanceM).toBe(moved.parameters.focusDistanceM);
     const ordinary = simulatorReducer(turned, { type: 'parameters', patch: { lensId: 'prime-50' } });
     expect(ordinary.parameters.focusDistanceM).toBeCloseTo(Math.max(0.45, axialDistance(ordinary.parameters.pose, point)), 10);
+  });
+});
+
+describe('same-framing format comparison', () => {
+  const setup = () => simulatorReducer(initialState, { type: 'formatComparison', enabled: true });
+
+  it('uses one custom iris and preserves horizontal framing, focus, aperture and exposure across formats', () => {
+    const baseline = setup(), original = baseline.parameters;
+    expect(original.lensId).toBe('custom');
+    const width = workingFovDeg(36, original.focalLengthMm, original.focusDistanceM);
+    let state = baseline;
+    for (const sensorId of ['aps-c', 'm43', 'medium-format', 'full-frame']) {
+      state = simulatorReducer(state, { type: 'parameters', patch: { sensorId } });
+      const p = state.parameters, sensor = getSensor(sensorId);
+      expect(p.sensorId).toBe(sensorId);
+      expect(workingFovDeg(sensor.widthMm, p.focalLengthMm, p.focusDistanceM)).toBeCloseTo(width, 10);
+      expect(p.focusDistanceM).toBe(original.focusDistanceM);
+      expect(p.focusPoint).toEqual(original.focusPoint);
+      expect(p.pose).toEqual(original.pose);
+      expect([p.aperture, p.iso, p.shutterSeconds, p.focusTracking, p.constantExposure])
+        .toEqual([original.aperture, original.iso, original.shutterSeconds, original.focusTracking, original.constantExposure]);
+    }
+    expect(state.parameters.focalLengthMm).toBeCloseTo(original.focalLengthMm, 10);
+  });
+
+  it('keeps fixed-focal cropping as the default and restores it after disabling comparison', () => {
+    const ordinary = simulatorReducer(initialState, { type: 'parameters', patch: { sensorId: 'aps-c' } });
+    expect(ordinary.parameters.focalLengthMm).toBe(50);
+    const off = simulatorReducer(setup(), { type: 'formatComparison', enabled: false });
+    expect(simulatorReducer(off, { type: 'parameters', patch: { sensorId: 'aps-c' } }).parameters.focalLengthMm).toBe(50);
+  });
+
+  it('supports infinity focus and declines an unachievable focal length without changing the sensor', () => {
+    let state = simulatorReducer(setup(), { type: 'focusDistance', value: Infinity });
+    state = simulatorReducer(state, { type: 'parameters', patch: { focalLengthMm: 10 } });
+    expect(simulatorReducer(state, { type: 'parameters', patch: { sensorId: 'aps-c' } })).toBe(state);
+    state = simulatorReducer(state, { type: 'parameters', patch: { focalLengthMm: 85 } });
+    const cropped = simulatorReducer(state, { type: 'parameters', patch: { sensorId: 'aps-c' } });
+    expect(cropped.parameters.focusDistanceM).toBe(Infinity);
+    expect(cropped.parameters.focalLengthMm).toBeCloseTo(85 * 23.5 / 36, 10);
+  });
+
+  it('does not move a close focus distance to accommodate a larger sensor', () => {
+    let state = simulatorReducer(initialState, { type: 'parameters', patch: { lensId: 'custom', sensorId: 'm43', focalLengthMm: 200 } });
+    state = simulatorReducer(state, { type: 'focusDistance', value: 0.25 });
+    state = simulatorReducer(state, { type: 'formatComparison', enabled: true });
+    expect(simulatorReducer(state, { type: 'parameters', patch: { sensorId: 'medium-format' } })).toBe(state);
+    expect(state.parameters.focusDistanceM).toBe(0.25);
+  });
+
+  it('exits comparison when choosing another lens, rejects special optics, and resets cleanly', () => {
+    for (const lensId of ['prime-85', 'fisheye-16', 'ts-24', 'mirror-500']) {
+      const changed = simulatorReducer(setup(), { type: 'parameters', patch: { lensId } });
+      expect(changed.formatComparison).toBe(false);
+      if (lensId !== 'prime-85') expect(simulatorReducer(changed, { type: 'formatComparison', enabled: true })).toBe(changed);
+    }
+    expect(simulatorReducer(setup(), { type: 'reset' })).toEqual(initialState);
+    expect(simulatorReducer(setup(), { type: 'scene', id: 'portrait' }).formatComparison).toBe(true);
   });
 });

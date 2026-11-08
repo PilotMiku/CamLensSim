@@ -58,6 +58,16 @@ export function workingFovDeg(
   return (2 * Math.atan(dimension / (2 * imageDistanceMm)) * 180) / Math.PI;
 }
 
+/** Preserve horizontal framing at a fixed focus distance, including focus breathing.
+ * Different sensor aspect ratios necessarily change the vertical field of view.
+ */
+export function matchedFramingFocalMm(focalMm: number, focusM: number,
+  from: SensorPreset, to: SensorPreset): number {
+  const imageDistance = workingImageDistanceMm(focalMm, focusM)
+    * positive(to.widthMm, 'Sensor width') / positive(from.widthMm, 'Sensor width');
+  return imageDistance / (1 + imageDistance / (focusM * 1000));
+}
+
 export function cropFactor(sensor: SensorPreset): number {
   return (
     FULL_FRAME_DIAGONAL_MM /
@@ -200,6 +210,9 @@ export function calculateOptics(
     workingVerticalFovDeg: workingFovDeg(sensor.heightMm, focal, focus, tilt),
     cropFactor: crop,
     equivalentFocalMm: focal * crop,
+    entrancePupilMm: focal / aperture,
+    // Conventional diagonal-format reference at ordinary distances, not exposure.
+    equivalentDofAperture: aperture * crop,
     cocMm,
     diffractionMm,
     effectiveCocMm: Math.hypot(cocMm, diffractionMm),

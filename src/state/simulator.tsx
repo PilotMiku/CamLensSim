@@ -11,7 +11,7 @@ import {
   withSubjectDistance,
   type PoseLimits,
 } from '../domain/camera';
-import type { CameraParameters, CameraPose, Vec3, ViewSettings } from '../domain/types';
+import type { CameraParameters, CameraPose, SensorPreset, Vec3, ViewSettings } from '../domain/types';
 import {
   DEFAULT_PARAMETERS,
   getLens,
@@ -19,19 +19,21 @@ import {
   minFocusMeters,
   snapAperture,
 } from '../data/equipment';
-import { tiltFocusDistanceForPoint } from '../optics/calculate';
+import { matchedFramingFocalMm, tiltFocusDistanceForPoint } from '../optics/calculate';
 import { getScene } from '../scenes/registry';
 
 export interface SimulatorState {
   sceneId: string;
   parameters: CameraParameters;
   view: ViewSettings;
+  formatComparison: boolean;
 }
 
 type ParameterPatch = Partial<Omit<CameraParameters, 'pose' | 'focusPoint'>>;
 
 export type SimulatorAction =
   | { type: 'parameters'; patch: ParameterPatch }
+  | { type: 'formatComparison'; enabled: boolean }
   | { type: 'pose'; patch: Partial<CameraPose> }
   | { type: 'focusAtPoint'; point: Vec3 }
   | { type: 'focusDistance'; value: number }
@@ -60,6 +62,7 @@ function defaultParametersFor(sceneId: string): CameraParameters {
 export const initialState: SimulatorState = {
   sceneId: 'indoor',
   parameters: defaultParametersFor('indoor'),
+  formatComparison: false,
   view: { focusSound: true, renderMode: 'realtime', grid: false, depthOfField: true, quality: 'balanced', touchControls: false },
 };
 
@@ -142,6 +145,17 @@ function syncFocus(parameters: CameraParameters): CameraParameters {
 const settle = (next: CameraParameters, previous: CameraParameters, limits: PoseLimits) =>
   syncFocus(constrain(next, previous, limits));
 
+/** Reject unattainable comparisons rather than moving focus or silently cropping. */
+export function comparisonFocalForSensor(parameters: CameraParameters, sensor: SensorPreset): number | null {
+  const lens = getLens(parameters.lensId), custom = getLens('custom');
+  if (lens.kind !== 'prime' && lens.kind !== 'zoom') return null;
+  const focal = matchedFramingFocalMm(parameters.focalLengthMm, parameters.focusDistanceM,
+    getSensor(parameters.sensorId), sensor);
+  if (focal < custom.minFocalMm - 1e-7 || focal > custom.maxFocalMm + 1e-7) return null;
+  const bounded = clamp(focal, custom.minFocalMm, custom.maxFocalMm);
+  return parameters.focusDistanceM >= minFocusMeters(custom, bounded) ? bounded : null;
+}
+
 /** Move the focus point when the user edits the distance directly. */
 function manualFocus(parameters: CameraParameters, value: number): CameraParameters {
   const lens = getLens(parameters.lensId);
@@ -164,6 +178,7 @@ export function simulatorReducer(state: SimulatorState, action: SimulatorAction)
     case 'reset':
       return {
         sceneId: state.sceneId,
+        formatComparison: false,
         parameters: defaultParametersFor(state.sceneId),
         view: { ...initialState.view, touchControls: state.view.touchControls },
       };
@@ -184,7 +199,15 @@ export function simulatorReducer(state: SimulatorState, action: SimulatorAction)
         p,
         nextScene.poseLimits,
       );
-      return { sceneId: nextScene.id, parameters, view: { ...state.view } };
+      return { ...state, sceneId: nextScene.id, parameters, view: { ...state.view } };
+    }
+    case 'formatComparison': {
+      if (!action.enabled) return { ...state, formatComparison: false };
+      if (comparisonFocalForSensor(p, getSensor(p.sensorId)) === null) return state;
+      // Standardise aperture shape as well as freeing the focal length from prime
+      // and zoom preset limits, so the baseline and target use the same iris.
+      return { ...state, formatComparison: true,
+        parameters: constrain({ ...p, lensId: 'custom' }, p, limits) };
     }
     case 'view':
       return { ...state, view: { ...state.view, ...action.patch } };
@@ -230,6 +253,14 @@ export function simulatorReducer(state: SimulatorState, action: SimulatorAction)
     }
     case 'parameters': {
       const next = { ...p, ...action.patch };
+      if (state.formatComparison && action.patch.sensorId !== undefined
+        && action.patch.lensId === undefined && action.patch.focalLengthMm === undefined) {
+        const sensor = getSensor(action.patch.sensorId);
+        const focalLengthMm = comparisonFocalForSensor(p, sensor);
+        if (focalLengthMm === null) return state;
+        return { ...state, parameters: constrain({ ...next, sensorId: sensor.id, focalLengthMm }, p, limits) };
+      }
+      const formatComparison = state.formatComparison && !(action.patch.lensId && action.patch.lensId !== p.lensId);
       const result = settle(next, p, limits);
       // Switching lenses can push the focus beyond the new close-focus limit.
       if (action.patch.lensId && action.patch.lensId !== p.lensId) {
@@ -238,6 +269,7 @@ export function simulatorReducer(state: SimulatorState, action: SimulatorAction)
         if (result.focusDistanceM < min) {
           return {
             ...state,
+            formatComparison,
             parameters: constrain(
               {
                 ...result,
@@ -250,7 +282,7 @@ export function simulatorReducer(state: SimulatorState, action: SimulatorAction)
           };
         }
       }
-      return { ...state, parameters: result };
+      return { ...state, formatComparison, parameters: result };
     }
     default:
       return state;

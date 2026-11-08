@@ -44,3 +44,12 @@ describe('magnification readout', () => {
     for (const invalid of [NaN, Infinity, -Infinity, -1]) expect(formatMagnification(invalid)).toBe('—');
   });
 });
+
+it('labels pupil diameter and DOF equivalence as separate from the actual exposure setting', () => {
+  const parameters = { ...initialState.parameters, sensorId: 'aps-c', focalLengthMm: 56, aperture: 1.8 };
+  const optics = calculateOptics(parameters, getSensor('aps-c'), getLens('custom'));
+  const html = renderToStaticMarkup(createElement(OpticsReadout, { optics }));
+  expect(html).toContain('data-testid="entrance-pupil">31.1 mm');
+  expect(html).toContain('data-testid="equivalent-dof-aperture">f/2.8');
+  expect(html).toContain('不用于曝光计算');
+});

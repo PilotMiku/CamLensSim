@@ -1,0 +1,41 @@
+import { expect, test } from './fixtures';
+
+test.use({ renderWidth: process.env.CI ? 320 : undefined });
+
+test('compares sensor formats at the same framing, focus and actual f-number', async ({ page }) => {
+  const errors: string[] = [];
+  page.on('pageerror', e => errors.push(e.message));
+  page.on('console', m => { if (m.type() === 'error') errors.push(m.text()); });
+  await page.goto('/');
+  await expect(page.getByTestId('canvas-host')).toHaveAttribute('data-status', 'ready');
+  await page.getByLabel('渲染质量').selectOption('smooth');
+  await page.getByLabel('镜头预设').selectOption('prime-85');
+  const focus = page.getByLabel('对焦距离', { exact: true });
+  await focus.fill('3'); await focus.press('Tab');
+  const mode = page.getByRole('button', { name: '画幅对比：保持水平构图', exact: true });
+  await expect(mode).toHaveAttribute('aria-pressed', 'false');
+  await mode.click();
+  await expect(mode).toHaveAttribute('aria-pressed', 'true');
+  await expect(page.getByLabel('镜头预设')).toHaveValue('custom');
+  const fov = await page.getByTestId('working-horizontal-fov').textContent();
+  const pupil = parseFloat((await page.getByTestId('entrance-pupil').textContent())!);
+  const dof = parseFloat((await page.getByTestId('total-dof').textContent())!);
+  const pose = await page.getByTestId('camera-pose').textContent();
+  await page.getByRole('button', { name: 'APS-C', exact: true }).click();
+  await expect(page.getByTestId('working-horizontal-fov')).toHaveText(fov!);
+  await expect(focus).toHaveValue('3.00');
+  await expect(page.getByLabel('光圈', { exact: true })).toHaveValue('1.8');
+  await expect(page.getByTestId('camera-pose')).toHaveText(pose!);
+  expect(parseFloat((await page.getByTestId('entrance-pupil').textContent())!)).toBeLessThan(pupil);
+  expect(parseFloat((await page.getByTestId('total-dof').textContent())!)).toBeGreaterThan(dof);
+  await expect(page.getByTestId('equivalent-dof-aperture')).toHaveText('f/2.8');
+  await expect(page.getByLabel('ISO', { exact: true })).toHaveValue('100');
+  await expect(page.getByLabel('快门', { exact: true })).toHaveValue('0.008');
+  await page.getByRole('button', { name: '全画幅', exact: true }).click();
+  await expect(page.getByLabel('焦距', { exact: true })).toHaveValue('85.0');
+  await expect(page.getByTestId('working-horizontal-fov')).toHaveText(fov!);
+  await page.getByLabel('镜头预设').selectOption('fisheye-16');
+  await expect(mode).toHaveAttribute('aria-pressed', 'false');
+  await expect(mode).toBeDisabled();
+  expect(errors).toEqual([]);
+});

@@ -1,7 +1,7 @@
 import { MAX_FOCUS_M, subjectDistance } from '../domain/camera';
 import { getLens, getSensor, LENSES, minFocusMeters, SENSORS } from '../data/equipment';
 import { exposureValue, formatEv } from '../optics/calculate';
-import { requestedFocusForPoint, useSimulator } from '../state/simulator';
+import { comparisonFocalForSensor, requestedFocusForPoint, useSimulator } from '../state/simulator';
 import { Icon, type IconName } from './Icon';
 import { ParameterControl } from './ParameterControl';
 
@@ -28,17 +28,20 @@ function Toggle({
   pressed,
   onChange,
   description,
+  disabled = false,
 }: {
   label: string;
   pressed: boolean;
   onChange: (next: boolean) => void;
   description: string;
+  disabled?: boolean;
 }) {
   return (
     <button
       className="toggle-row"
       aria-pressed={pressed}
       aria-label={label}
+      disabled={disabled}
       onClick={() => onChange(!pressed)}
     >
       <span>
@@ -63,7 +66,7 @@ const LENS_GROUPS: Array<{ group: string; items: typeof LENSES }> = (() => {
 
 export function ControlPanel() {
   const {
-    state: { parameters: p },
+    state: { parameters: p, formatComparison },
     dispatch,
   } = useSimulator();
   const lens = getLens(p.lensId);
@@ -75,6 +78,7 @@ export function ControlPanel() {
   const isPrime = lens.minFocalMm === lens.maxFocalMm;
   const isTiltShift = lens.kind === 'tilt-shift';
   const isMirror = lens.kind === 'mirror';
+  const comparisonSupported = lens.kind === 'prime' || lens.kind === 'zoom';
   const requestedFocus = requestedFocusForPoint(p, p.focusPoint);
   const focusLimited = p.focusTracking && (requestedFocus === null || requestedFocus < minFocus || requestedFocus > MAX_FOCUS_M);
   const focalLog = lens.maxFocalMm / lens.minFocalMm > 8;
@@ -97,6 +101,9 @@ export function ControlPanel() {
             <button
               key={item.id}
               aria-pressed={p.sensorId === item.id}
+              disabled={formatComparison && comparisonFocalForSensor(p, item) === null}
+              title={formatComparison && comparisonFocalForSensor(p, item) === null
+                ? '保持构图所需焦距或对焦距离超出镜头范围' : undefined}
               onClick={() => set({ sensorId: item.id })}
             >
               {item.name}
@@ -109,6 +116,18 @@ export function ControlPanel() {
           </span>
           <span>{sensor.shortName.toUpperCase()}</span>
         </div>
+        <Toggle
+          label="画幅对比：保持水平构图"
+          pressed={formatComparison}
+          disabled={!comparisonSupported}
+          onChange={(enabled) => dispatch({ type: 'formatComparison', enabled })}
+          description={comparisonSupported
+            ? '使用自定义镜头，切换画幅时自动调整焦距，保持机位、对焦距离和实际 f 数。'
+            : '普通定焦或变焦镜头支持同构图对比。'}
+        />
+        {formatComparison && <p className="parameter-note">
+          相同 f 数下，小画幅所需焦距更短、入瞳更小，虚化通常更弱。长宽比不同会改变上下范围。
+        </p>}
       </section>
       <section className="control-section">
         <SectionHeading icon="lens" title="镜头" caption="LENS" />
@@ -132,7 +151,7 @@ export function ControlPanel() {
           value={p.focalLengthMm}
           min={lens.minFocalMm}
           max={lens.maxFocalMm}
-          step={1}
+          step={formatComparison || !Number.isInteger(p.focalLengthMm) ? 0.1 : 1}
           unit="mm"
           onChange={(value) => set({ focalLengthMm: value })}
           disabled={isPrime}

@@ -262,7 +262,7 @@ export function Viewfinder({ sceneId }: { sceneId: string }) {
           {view.touchControls && <Joysticks controls={controls} />}
           <div className="viewfinder-readout">
             <span>
-              {parameters.focalLengthMm.toFixed(0)}
+              {parameters.focalLengthMm.toFixed(Number.isInteger(parameters.focalLengthMm) ? 0 : 1)}
               <small>mm</small>
             </span>
             <span>f/{parameters.aperture.toFixed(1)}</span>
