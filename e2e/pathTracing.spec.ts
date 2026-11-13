@@ -1,9 +1,9 @@
 import type { Page } from '@playwright/test';
-import { expect, test } from './fixtures';
+import { expect, pathTracingRenderWidth, test } from './fixtures';
 import type { RenderQuality } from '../src/domain/types';
 import { RENDER_QUALITY } from '../src/data/renderQuality';
 
-test.use({ renderWidth: process.env.CI ? 320 : undefined });
+test.use({ renderWidth: pathTracingRenderWidth });
 
 function watchErrors(page: Page) {
   const errors: string[] = [];

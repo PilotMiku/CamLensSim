@@ -1,6 +1,11 @@
 import { test as base } from '@playwright/test';
 export { expect } from '@playwright/test';
 
+// SwiftShader traces these integration frames on the CPU. Halving the width
+// quarters the pixels while retaining real scene geometry and all sample counts.
+// Native-resolution quality and visual tests use their own, larger viewports.
+export const pathTracingRenderWidth = process.env.CI ? 160 : undefined;
+
 /** Opt-in pixel budget for interaction/path integration tests on software GPUs.
  * This changes only the test page's CSS size. Production quality percentages,
  * ray counts and shaders remain intact; quality.spec.ts uses the full viewport.

@@ -1,4 +1,4 @@
-import { expect, test } from './fixtures';
+import { expect, pathTracingRenderWidth, test } from './fixtures';
 
 test.use({ renderWidth: process.env.CI ? 320 : undefined });
 
@@ -72,7 +72,7 @@ for (const distribution of ['uniform', 'indirect'] as const) {
 }
 
 test('keeps fixed shadow-tested light shafts active in every scene', async ({ page }) => {
-  test.setTimeout(120_000);
+  test.setTimeout(180_000);
   const errors: string[] = [];
   page.on('pageerror', error => errors.push(error.message));
   page.on('console', message => { if (message.type() === 'error') errors.push(message.text()); });
@@ -80,7 +80,8 @@ test('keeps fixed shadow-tested light shafts active in every scene', async ({ pa
   await page.getByLabel('渲染质量').selectOption('smooth');
   for (const id of ['indoor', 'outdoor', 'portrait', 'animal']) {
     await page.getByLabel('选择场景').selectOption(id);
-    await expect(page.getByTestId('canvas-host')).toHaveAttribute('data-status', 'ready');
+    // Each newly selected scene can cold-compile its shaders on SwiftShader.
+    await expect(page.getByTestId('canvas-host')).toHaveAttribute('data-status', 'ready', { timeout: 60_000 });
     await expect(page.getByTestId('canvas-host')).toHaveAttribute('data-volumetric-light', 'true');
     await expect(page.getByTestId('canvas-host')).toHaveAttribute('data-fixed-light-beam', 'true');
     await page.locator('canvas').screenshot({ path: `test-results/${test.info().project.name}-${id}-light-shafts.png` });
@@ -88,28 +89,32 @@ test('keeps fixed shadow-tested light shafts active in every scene', async ({ pa
   expect(errors).toEqual([]);
 });
 
-for (const id of ['indoor', 'outdoor', 'portrait', 'animal']) {
-  test(`traces sunlight and physical lamp fixtures in ${id}`, async ({ page }) => {
-    test.setTimeout(180_000);
-    const errors: string[] = [];
-    page.on('pageerror', error => errors.push(error.message));
-    page.on('console', message => { if (message.type() === 'error') errors.push(message.text()); });
-    await page.goto('/');
-    await page.getByLabel('渲染质量').selectOption('smooth');
-    const host = page.getByTestId('canvas-host');
-    await page.getByLabel('选择场景').selectOption(id);
-    await expect(host).toHaveAttribute('data-status', 'ready');
-    await page.getByLabel('渲染模式').selectOption('pathtraced');
-    await expect(host).toHaveAttribute('data-render-mode', 'pathtraced', { timeout: 90_000 });
-    await expect.poll(async () => Number(await host.getAttribute('data-path-samples')), { timeout: 90_000 }).toBeGreaterThanOrEqual(8);
-    await expect(host).toHaveAttribute('data-path-denoised', 'true');
-    await expect(host).toHaveAttribute('data-fixed-light-beam', 'true');
-    await page.getByTestId('image-frame').screenshot({ path: `test-results/${test.info().project.name}-${id}-fixtures-pathtraced.png` });
-    await page.getByLabel('渲染模式').selectOption('realtime');
-    await expect(host).toHaveAttribute('data-render-mode', 'realtime');
-    expect(errors).toEqual([]);
-  });
-}
+test.describe('physical lighting integration', () => {
+  test.use({ renderWidth: pathTracingRenderWidth });
+
+  for (const id of ['indoor', 'outdoor', 'portrait', 'animal']) {
+    test(`traces sunlight and physical lamp fixtures in ${id}`, async ({ page }) => {
+      test.setTimeout(180_000);
+      const errors: string[] = [];
+      page.on('pageerror', error => errors.push(error.message));
+      page.on('console', message => { if (message.type() === 'error') errors.push(message.text()); });
+      await page.goto('/');
+      await page.getByLabel('渲染质量').selectOption('smooth');
+      const host = page.getByTestId('canvas-host');
+      await page.getByLabel('选择场景').selectOption(id);
+      await expect(host).toHaveAttribute('data-status', 'ready', { timeout: 60_000 });
+      await page.getByLabel('渲染模式').selectOption('pathtraced');
+      await expect(host).toHaveAttribute('data-render-mode', 'pathtraced', { timeout: 90_000 });
+      await expect.poll(async () => Number(await host.getAttribute('data-path-samples')), { timeout: 120_000 }).toBeGreaterThanOrEqual(8);
+      await expect(host).toHaveAttribute('data-path-denoised', 'true');
+      await expect(host).toHaveAttribute('data-fixed-light-beam', 'true');
+      await page.getByTestId('image-frame').screenshot({ path: `test-results/${test.info().project.name}-${id}-fixtures-pathtraced.png` });
+      await page.getByLabel('渲染模式').selectOption('realtime');
+      await expect(host).toHaveAttribute('data-render-mode', 'realtime');
+      expect(errors).toEqual([]);
+    });
+  }
+});
 
 test('shows the pendant suspended from the indoor ceiling when looking up', async ({ page }) => {
   await page.goto('/');
