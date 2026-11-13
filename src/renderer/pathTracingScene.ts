@@ -5,6 +5,18 @@ import { bakeEnvironmentFill } from './pathTracingEnvironment';
 import { createWaterNormalTexture } from '../scenes/textures';
 import type { SceneInstance } from '../scenes/types';
 
+/** The pinned tracer drops RGB colours when merging them with generated RGBA
+ * attributes. Give every explicitly coloured mesh the same four-channel layout. */
+function normalizeVertexColors(geometry: THREE.BufferGeometry) {
+  const source = geometry.getAttribute('color');
+  if (!source || source.itemSize === 4) return;
+  const rgba = new Float32Array(source.count * 4);
+  for (let i = 0; i < source.count; i++) {
+    rgba.set([source.getX(i), source.getY(i), source.getZ(i), 1], i * 4);
+  }
+  geometry.setAttribute('color', new THREE.BufferAttribute(rgba, 4));
+}
+
 /** Bake every instance into BVH geometry, including per-instance tint and mirrored winding. */
 export function bakeInstances(mesh: THREE.InstancedMesh) {
   const source = mesh.geometry;
@@ -129,6 +141,7 @@ export function createPathTracingScene(world: SceneInstance) {
       ownedMaterials.add(material); return material;
     });
     const geometry = object instanceof THREE.InstancedMesh ? bakeInstances(object) : object.geometry.clone();
+    normalizeVertexColors(geometry);
     ownedGeometry.add(geometry);
     const mesh = new THREE.Mesh(geometry, Array.isArray(object.material) ? materials : materials[0]);
     mesh.name = object.name;

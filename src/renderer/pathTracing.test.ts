@@ -30,6 +30,11 @@ vi.mock('./pathTracingFocus', async importOriginal => {
   return { ...original, installTracerPlanarFocus: vi.fn() };
 });
 
+vi.mock('./pathTracingShadowRays', async importOriginal => {
+  const original = await importOriginal<typeof import('./pathTracingShadowRays')>();
+  return { ...original, installTracerShadowRayCorrection: vi.fn() };
+});
+
 describe('path tracing quality', () => {
   it('keeps native tracer resolution after renderer scaling and resets accumulation', () => {
     const renderer = { extensions: { has: () => true } } as unknown as THREE.WebGLRenderer;

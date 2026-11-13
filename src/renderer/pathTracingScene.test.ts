@@ -3,7 +3,7 @@ import { describe, expect, it } from 'vitest';
 import { PhysicalCamera, PathTracingSceneGenerator, ShapedAreaLight } from 'three-gpu-pathtracer';
 import { configurePhysicalCamera } from './pathTracing';
 import { bakeInstances, createPathTracingScene } from './pathTracingScene';
-import { doubleSideCorrectionShader } from './pathTracingDoubleSide';
+import { shadowRayCorrectionShader } from './pathTracingShadowRays';
 import { solarRadiance } from '../optics/sun';
 import { addVisibleSun } from '../scenes/sunlight';
 import { applyAfternoonSky, afternoonSkyColor } from '../scenes/afternoonSky';
@@ -102,6 +102,32 @@ describe('physical path tracing scene', () => {
     result.geometry.dispose(); geometry.dispose(); source.dispose(); material.dispose();
   });
 
+  it('preserves RGB face albedo when the BVH merges it after uncoloured geometry', () => {
+    const scene = new THREE.Scene(), sun = new THREE.DirectionalLight(0xffffff, 4);
+    const plain = new THREE.Mesh(new THREE.PlaneGeometry(), new THREE.MeshStandardMaterial());
+    plain.position.x = -2; scene.add(plain);
+    const geometry = new THREE.PlaneGeometry();
+    const rgb = new Float32Array(geometry.attributes.position.count * 3);
+    for (let i = 0; i < rgb.length; i += 3) rgb.set([0.8, 0.45, 0.3], i);
+    geometry.setAttribute('color', new THREE.BufferAttribute(rgb, 3));
+    const face = new THREE.Mesh(geometry, new THREE.MeshStandardMaterial({ vertexColors: true }));
+    face.position.x = 2; scene.add(face);
+    const physical = createPathTracingScene({ scene, sunlight: { sun, density: 0, distance: 10,
+      groundHeight: 0, heightFalloff: 0 }, dispose() {} });
+    const generated = new PathTracingSceneGenerator(physical.scene).generate();
+    const p = generated.geometry.attributes.position, color = generated.geometry.attributes.color;
+    let checked = 0;
+    for (let i = 0; i < p.count; i++) if (p.getX(i) > 1) {
+      expect(color.getX(i), 'red albedo must survive BVH merging').toBeCloseTo(0.8);
+      expect(color.getY(i)).toBeCloseTo(0.45); expect(color.getZ(i)).toBeCloseTo(0.3);
+      expect(color.getW(i)).toBe(1); checked++;
+    }
+    expect(checked).toBeGreaterThan(0);
+    expect(Array.from(geometry.attributes.color.array)).toEqual(Array.from(rgb));
+    generated.geometry.dispose(); physical.dispose();
+    for (const mesh of [plain, face]) { mesh.geometry.dispose(); mesh.material.dispose(); }
+  });
+
   it('preserves physical water and the fixed sun without a second stochastic scattering volume', () => {
     const source = new THREE.Scene();
     const water = new THREE.Mesh(new THREE.PlaneGeometry(2, 2), new THREE.ShaderMaterial());
@@ -126,17 +152,18 @@ describe('physical path tracing scene', () => {
     water.geometry.dispose(); water.material.dispose();
   });
 
-  it('patches tracer shader so double-sided geometry and transparent glazing receive sunlight', () => {
+  it('preserves already oriented BVH normals while respecting non-shadow-casting glazing', () => {
     const rawShader = /* glsl */ `
       surf.faceNormal = surfaceHit.faceNormal;
       surf.normal = normal;
       bool isTransmissiveRay = ! surf.volumeParticle && dot( scatterRec.direction, surf.faceNormal * surfaceHit.side ) < 0.0;
       bool isShadowRay = state.isShadowRay;
     `;
-    const patched = doubleSideCorrectionShader(rawShader);
-    expect(patched).toContain('surf.faceNormal = surfaceHit.faceNormal * surfaceHit.side;');
-    expect(patched).toContain('bool isTransmissiveRay = ! surf.volumeParticle && dot( scatterRec.direction, surf.faceNormal ) < 0.0;');
+    const patched = shadowRayCorrectionShader(rawShader);
+    expect(patched).toContain('surf.faceNormal = surfaceHit.faceNormal;');
+    expect(patched).toContain('bool isTransmissiveRay = ! surf.volumeParticle && dot( scatterRec.direction, surf.faceNormal * surfaceHit.side ) < 0.0;');
     expect(patched).toContain('bool isShadowRay = true;');
+    expect(() => shadowRayCorrectionShader('unsupported shader')).toThrow();
   });
 
   it('preserves nested object world matrices into baked BVH geometry', () => {
