@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import { GradientEquirectTexture } from 'three-gpu-pathtracer';
 import { createPhysicalSun } from './physicalSun';
 import { bakeEnvironmentFill } from './pathTracingEnvironment';
+import { createWaterNormalTexture } from '../scenes/textures';
 import type { SceneInstance } from '../scenes/types';
 
 /** Bake every instance into BVH geometry, including per-instance tint and mirrored winding. */
@@ -53,7 +54,7 @@ export function bakeInstances(mesh: THREE.InstancedMesh) {
 /** An independent physical scene: no mutation or disposal of the interactive scene. */
 export function createPathTracingScene(world: SceneInstance) {
   const scene = new THREE.Scene();
-  const ownedGeometry = new Set<THREE.BufferGeometry>(), ownedMaterials = new Set<THREE.Material>();
+  const ownedGeometry = new Set<THREE.BufferGeometry>(), ownedMaterials = new Set<THREE.Material>(), ownedTextures = new Set<THREE.Texture>();
   const environment = world.sky?.lightingEnvironment.clone() ?? new GradientEquirectTexture(128);
   if (environment instanceof GradientEquirectTexture) {
     environment.topColor.set('#9cbdd7'); environment.bottomColor.set('#6a7056'); environment.update();
@@ -100,8 +101,21 @@ export function createPathTracingScene(world: SceneInstance) {
     const materials = list.map(source => {
       let material: THREE.MeshStandardMaterial;
       if (water) {
-        material = new THREE.MeshPhysicalMaterial({ color: '#b8d9d8', roughness: 0.055,
-          metalness: 0, transmission: 0.65, thickness: 2, ior: 1.333, side: THREE.DoubleSide });
+        const waterNormal = createWaterNormalTexture(256);
+        ownedTextures.add(waterNormal);
+        material = new THREE.MeshPhysicalMaterial({
+          color: '#8ec5c8',
+          roughness: 0.08,
+          metalness: 0.02,
+          transmission: 0.75,
+          thickness: 2.5,
+          ior: 1.333,
+          side: THREE.DoubleSide,
+          normalMap: waterNormal,
+          normalScale: new THREE.Vector2(0.04, 0.04),
+          attenuationColor: new THREE.Color('#1a525a'),
+          attenuationDistance: 1.8,
+        });
       } else if (source instanceof THREE.MeshStandardMaterial) {
         material = source.clone();
       } else {
@@ -118,12 +132,16 @@ export function createPathTracingScene(world: SceneInstance) {
     ownedGeometry.add(geometry);
     const mesh = new THREE.Mesh(geometry, Array.isArray(object.material) ? materials : materials[0]);
     mesh.name = object.name;
-    mesh.matrix.copy(object.matrixWorld); mesh.matrixAutoUpdate = false;
+    mesh.matrix.copy(object.matrixWorld);
+    mesh.matrixWorld.copy(object.matrixWorld);
+    mesh.matrixAutoUpdate = false;
     scene.add(mesh);
   });
+  scene.updateMatrixWorld(true);
   // Single scattering is integrated by the shared shadow-tested sunlight pass.
   // A stochastic fog volume here would add low-sample noise and double the medium.
   return { scene, solar, syncSun: solar.sync, dispose() {
-    ownedGeometry.forEach(g => g.dispose()); ownedMaterials.forEach(m => m.dispose()); environment.dispose(); scene.clear();
+    ownedGeometry.forEach(g => g.dispose()); ownedMaterials.forEach(m => m.dispose());
+    ownedTextures.forEach(t => t.dispose()); environment.dispose(); scene.clear();
   } };
 }

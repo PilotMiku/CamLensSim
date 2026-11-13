@@ -142,7 +142,7 @@ export const outdoorScene: SceneDefinition = {
       const tuft = makeGrassTuft(new THREE.Vector3(x, terrainHeight(x, z), z), 14, 0.35 + rand() * 0.55, 0.5, i + 411, grass);
       if (tuft) scene.add(tuft);
     }
-    const flowerMaterial = new THREE.MeshStandardMaterial({ color: '#fffdf0', vertexColors: true, side: THREE.DoubleSide, roughness: 0.8 });
+    const flowerMaterial = new THREE.MeshPhysicalMaterial({ color: '#ffffff', vertexColors: true, side: THREE.DoubleSide, roughness: 0.72, sheen: 0.4, sheenColor: new THREE.Color('#fff2e0') });
     const wildflowers = new THREE.InstancedMesh(blossomGeometry(), flowerMaterial, 900);
     const transform = new THREE.Object3D();
     for (let i = 0; i < wildflowers.count; i++) {
@@ -153,7 +153,11 @@ export const outdoorScene: SceneDefinition = {
       transform.scale.setScalar(Math.abs(x - track) < 0.65 ? 0.001 : 0.015 + rand() * 0.015);
       transform.updateMatrix();
       wildflowers.setMatrixAt(i, transform.matrix);
-      color.set(i % 3 === 0 ? '#b9a6ce' : '#fff6d8');
+      const variant = i % 4;
+      if (variant === 0) color.set('#9b8ecb');
+      else if (variant === 1) color.set('#ffca48');
+      else if (variant === 2) color.set('#fffcf4');
+      else color.set('#f8b6b8');
       wildflowers.setColorAt(i, color);
     }
     wildflowers.receiveShadow = true;

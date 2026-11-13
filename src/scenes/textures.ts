@@ -352,3 +352,23 @@ export function createContactShadowTexture(): THREE.Texture {
   texture.colorSpace = THREE.SRGBColorSpace;
   return texture;
 }
+
+/** Micro-scale capillary water ripple normal map for lake surfaces. */
+export function createWaterNormalTexture(size = 256): THREE.DataTexture {
+  const heights = new Float32Array(size * size);
+  for (let y = 0; y < size; y++) {
+    for (let x = 0; x < size; x++) {
+      const u = x / size, v = y / size;
+      const w1 = Math.sin((u * 12.0 + v * 8.0) * Math.PI * 2.0);
+      const w2 = Math.sin((u * 22.0 - v * 16.0) * Math.PI * 2.0);
+      const w3 = Math.sin((v * 36.0 + u * 10.0) * Math.PI * 2.0);
+      const noise = fbm2D(u, v, 12, 12, 7919, 3);
+      heights[y * size + x] = w1 * 0.45 + w2 * 0.28 + w3 * 0.15 + noise * 0.12;
+    }
+  }
+  const texture = normalTexture(heights, size, 8.0);
+  texture.wrapS = THREE.RepeatWrapping;
+  texture.wrapT = THREE.RepeatWrapping;
+  texture.repeat.set(16, 16);
+  return texture;
+}

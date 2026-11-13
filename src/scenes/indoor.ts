@@ -104,8 +104,8 @@ export const indoorScene: SceneDefinition = {
     textures.add(artworkTexture);
     textures.add(contactTexture);
 
-    const material = (parameters: THREE.MeshStandardMaterialParameters) => {
-      const item = new THREE.MeshStandardMaterial(parameters);
+    const material = (parameters: THREE.MeshPhysicalMaterialParameters) => {
+      const item = new THREE.MeshPhysicalMaterial(parameters);
       materials.add(item);
       return item;
     };
@@ -124,8 +124,10 @@ export const indoorScene: SceneDefinition = {
       normalMap: wood.normalMap,
       roughnessMap: wood.roughnessMap,
       color: '#ffffff',
-      roughness: 0.72,
+      roughness: 0.68,
       metalness: 0,
+      clearcoat: 0.16,
+      clearcoatRoughness: 0.35,
       normalScale: new THREE.Vector2(0.24, 0.24),
     });
     const darkWoodMaterial = material({
@@ -150,8 +152,12 @@ export const indoorScene: SceneDefinition = {
       normalMap: stoneware.normalMap,
       roughnessMap: stoneware.roughnessMap,
       color: '#ffffff',
-      roughness: 0.56,
+      roughness: 0.52,
       metalness: 0,
+      clearcoat: 0.35,
+      clearcoatRoughness: 0.28,
+      sheen: 0.25,
+      sheenColor: new THREE.Color('#d4a882'),
       normalScale: new THREE.Vector2(0.20, 0.20),
       side: THREE.DoubleSide,
     });
@@ -160,7 +166,11 @@ export const indoorScene: SceneDefinition = {
       normalMap: tealWare.normalMap,
       roughnessMap: tealWare.roughnessMap,
       color: '#ffffff',
-      roughness: 0.32,
+      roughness: 0.24,
+      clearcoat: 0.85,
+      clearcoatRoughness: 0.12,
+      sheen: 0.2,
+      sheenColor: new THREE.Color('#86c2b5'),
       normalScale: new THREE.Vector2(0.16, 0.16),
       side: THREE.DoubleSide,
     });
@@ -181,9 +191,11 @@ export const indoorScene: SceneDefinition = {
       side: THREE.DoubleSide,
     });
     const brassMaterial = material({
-      color: '#c9a269',
-      metalness: 1,
-      roughness: 0.3,
+      color: '#d4af6d',
+      metalness: 0.95,
+      roughness: 0.22,
+      clearcoat: 0.35,
+      clearcoatRoughness: 0.22,
       envMapIntensity: 1.3,
     });
     const leafMaterial = material({
@@ -776,7 +788,7 @@ export const indoorScene: SceneDefinition = {
     model.mesh(cup, tealMaterial, [cupPosition.x, cupPosition.y + 0.018, cupPosition.z]);
     model.tube(tealMaterial, [[0.109, TABLE_TOP + 0.108, 0.50], [0.14, TABLE_TOP + 0.10, 0.50],
       [0.142, TABLE_TOP + 0.065, 0.50], [0.103, TABLE_TOP + 0.046, 0.50]], 0.005);
-    const tea = material({ color: '#3e2414', roughness: 0.16, metalness: 0.1 });
+    const tea = material({ color: '#3e2414', roughness: 0.04, metalness: 0.05, clearcoat: 1.0, clearcoatRoughness: 0.03 });
     model.mesh(new THREE.CircleGeometry(0.053, 64).rotateX(-Math.PI / 2), tea, [0.05, TABLE_TOP + 0.098, 0.50]);
     model.tube(brassMaterial, [[0.18, TABLE_TOP + 0.016, 0.43], [0.22, TABLE_TOP + 0.018, 0.50],
       [0.26, TABLE_TOP + 0.019, 0.56]], 0.0025);

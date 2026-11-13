@@ -2,21 +2,27 @@ import * as THREE from 'three';
 import { createModeling } from './modeling';
 import { createSurface, fbm2D } from './textures';
 import { seededRandom } from './helpers';
+import { organicGeometry } from './organicGeometry';
 
 /** A single lofted body and head avoids a visible ball-to-ball neck seam. */
 function robinGeometry() {
   const profile = [
     [-0.145, 0.005, 0.008, 0.0], [-0.11, 0.080, 0.107, 0.01],
-    [-0.04, 0.119, 0.149, 0.004], [0.035, 0.116, 0.143, 0.006],
-    [0.095, 0.090, 0.101, 0.044], [0.139, 0.075, 0.074, 0.086],
-    [0.178, 0.065, 0.062, 0.09], [0.211, 0.025, 0.025, 0.087], [0.216, 0.001, 0.001, 0.087],
+    [-0.04, 0.125, 0.149, 0.004], [0.035, 0.120, 0.143, 0.006],
+    [0.095, 0.092, 0.103, 0.044], [0.139, 0.076, 0.075, 0.078],
+    [0.178, 0.069, 0.065, 0.081], [0.211, 0.030, 0.032, 0.080], [0.219, 0.001, 0.001, 0.080],
   ];
   const rx = new THREE.SplineCurve(profile.map(([y, x]) => new THREE.Vector2(y, x)));
   const rz = new THREE.SplineCurve(profile.map(([y, _x, z]) => new THREE.Vector2(y, z)));
   const center = new THREE.SplineCurve(profile.map(([y, _x, _z, zc]) => new THREE.Vector2(y, zc)));
   const positions: number[] = [], colors: number[] = [], uv: number[] = [], indices: number[] = [];
   const rows = 120, sides = 96;
-  const color = new THREE.Color(), brown = new THREE.Color('#756957'), buff = new THREE.Color('#e1d8bf'), rust = new THREE.Color('#d27936');
+  const color = new THREE.Color(),
+    brown = new THREE.Color('#716c51'),
+    buff = new THREE.Color('#e1deca'),
+    rust = new THREE.Color('#c96c32'),
+    goldFringe = new THREE.Color('#bca387'),
+    flank = new THREE.Color('#8c7f6b');
   for (let row = 0; row <= rows; row++) {
     const t = row / rows, p = rx.getPoint(t), depth = Math.max(0.001, rz.getPoint(t).y), zc = center.getPoint(t).y;
     for (let j = 0; j <= sides; j++) {
@@ -24,10 +30,14 @@ function robinGeometry() {
       const x = Math.cos(a) * Math.max(0.001, p.y), z = zc + front * depth;
       positions.push(x, p.x, z);
       const belly = (1 - THREE.MathUtils.smoothstep(p.x, -0.10, 0.0)) * THREE.MathUtils.smoothstep(front, -0.45, 0.3);
-      const bib = THREE.MathUtils.smoothstep(front + 0.025 * Math.sin(row * 2.3 + j * 1.7), -0.05, 0.55)
+      const bibCore = THREE.MathUtils.smoothstep(front + 0.025 * Math.sin(row * 2.3 + j * 1.7), -0.05, 0.55)
         * THREE.MathUtils.smoothstep(p.x, -0.065, -0.012) * (1 - THREE.MathUtils.smoothstep(p.x, 0.175, 0.205));
-      color.copy(brown).lerp(buff, belly).lerp(rust, bib);
-      color.multiplyScalar(0.98 + Math.sin(j * 0.8 + row * 1.6) * 0.02);
+      const bibFringe = THREE.MathUtils.smoothstep(front, -0.18, 0.6)
+        * THREE.MathUtils.smoothstep(p.x, -0.08, -0.01) * (1 - THREE.MathUtils.smoothstep(p.x, 0.18, 0.215));
+      const sideFlank = (1 - Math.abs(front)) * THREE.MathUtils.smoothstep(p.x, -0.10, 0.05);
+
+      color.copy(brown).lerp(flank, sideFlank * 0.45).lerp(buff, belly).lerp(goldFringe, bibFringe * 0.6).lerp(rust, bibCore);
+      color.multiplyScalar(0.98 + Math.sin(a * 24 + p.x * 70) * 0.02);
       colors.push(color.r, color.g, color.b);
       uv.push(j / sides, t);
       if (row < rows && j < sides) {
@@ -48,13 +58,15 @@ function robinGeometry() {
 /** Rounded pennaceous feather: tapered vane, raised rachis and a soft cupped tip. */
 function featherGeometry() {
   const positions: number[] = [], uvs: number[] = [], indices: number[] = [];
-  const rows = 18, cols = 8;
+  const rows = 14, cols = 6;
   for (let r = 0; r <= rows; r++) {
     const t = r / rows;
-    const width = 0.5 * Math.pow(Math.sin(Math.PI * (0.025 + t * 0.95)), 0.58) * (1 - 0.28 * t);
+    const width = 0.5 * Math.pow(Math.sin(Math.PI * (0.008 + t * 0.984)), 0.65) * (1 - 0.20 * t);
     for (let c = 0; c <= cols; c++) {
       const u = c / cols, x = u * 2 - 1;
-      positions.push(x * width, t, (1 - x * x) * 0.28 * Math.sin(Math.PI * t) + t * t * 0.12);
+      const rachis = Math.exp(-((x * 8.5) ** 2)) * 0.045 * (1 - 0.35 * t);
+      const cup = (1 - x * x) * 0.09 * Math.sin(Math.PI * t) + t * t * 0.045;
+      positions.push(x * width, t, cup + rachis);
       uvs.push(u, t);
       if (r < rows && c < cols) {
         const i = r * (cols + 1) + c;
@@ -70,11 +82,67 @@ function featherGeometry() {
   return geometry;
 }
 
+/** Fine, shingled contour feathers lie directly on the continuous body surface.
+ * Sampling the loft prevents floating feather tips on the curved breast and neck. */
+function contourPlumage(body: THREE.BufferGeometry, random: () => number) {
+  const source = body.attributes.position, normals = body.attributes.normal, colors = body.attributes.color;
+  const positions: number[] = [], uv: number[] = [], tints: number[] = [], surfaceNormals: number[] = [], indices: number[] = [];
+  const point = new THREE.Vector3(), normal = new THREE.Vector3(), color = new THREE.Color();
+  const sample = (attribute: THREE.BufferAttribute | THREE.InterleavedBufferAttribute, row: number, column: number, out: THREE.Vector3 | THREE.Color) => {
+    const r = THREE.MathUtils.clamp(row, 1, 119), c = ((column % 96) + 96) % 96;
+    const r0 = Math.floor(r), c0 = Math.floor(c), fr = r - r0, fc = c - c0;
+    const ids = [r0 * 97 + c0, r0 * 97 + c0 + 1, (r0 + 1) * 97 + c0, (r0 + 1) * 97 + c0 + 1];
+    const weights = [(1 - fr) * (1 - fc), (1 - fr) * fc, fr * (1 - fc), fr * fc];
+    const components = [0, 0, 0];
+    for (let i = 0; i < 4; i++) {
+      components[0] += attribute.getX(ids[i]) * weights[i];
+      components[1] += attribute.getY(ids[i]) * weights[i];
+      components[2] += attribute.getZ(ids[i]) * weights[i];
+    }
+    if (out instanceof THREE.Color) out.setRGB(...components as [number, number, number]);
+    else out.set(...components as [number, number, number]);
+  };
+  const rows = 5, cols = 4;
+  for (let r = 5; r < 116; r += 1.8) for (let c = 0; c < 96; c += 1.35) {
+    const rootR = r + random() * 1.7, rootC = c + random() * 1.3;
+    sample(source, rootR, rootC, point);
+    if (Math.hypot(Math.abs(point.x) - 0.059, point.y - 0.171, point.z - 0.129) < 0.012) continue;
+    const featherLength = point.y > 0.10 ? 1.5 : 2.8 + random() * 1.2;
+    const width = 0.90 + random() * 0.32, base = positions.length / 3;
+    const tone = 0.995 + random() * 0.01;
+    for (let i = 0; i <= rows; i++) for (let j = 0; j <= cols; j++) {
+      const t = i / rows, x = j / cols * 2 - 1;
+      const taper = Math.pow(Math.sin(Math.PI * (0.12 + t * 0.88)), 0.65);
+      const row = rootR - t * featherLength, col = rootC + x * width * taper;
+      sample(source, row, col, point); sample(normals, row, col, normal); normal.normalize();
+      sample(colors, row, col, color); color.multiplyScalar(tone);
+      // Lift is sub-millimetre, keeping micro feathers close to the loft.
+      const lift = 0.00025 + Math.sin(Math.PI * t) * 0.00008 + t * 0.00006;
+      point.addScaledVector(normal, lift);
+      positions.push(point.x, point.y, point.z); uv.push(j / cols, t);
+      surfaceNormals.push(normal.x, normal.y, normal.z);
+      const edge = 1 - Math.abs(x) * 0.008;
+      tints.push(color.r * edge, color.g * edge, color.b * edge);
+      if (i < rows && j < cols) {
+        const a = base + i * (cols + 1) + j;
+        indices.push(a, a + 1, a + cols + 1, a + 1, a + cols + 2, a + cols + 1);
+      }
+    }
+  }
+  const geometry = new THREE.BufferGeometry();
+  geometry.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
+  geometry.setAttribute('normal', new THREE.Float32BufferAttribute(surfaceNormals, 3));
+  geometry.setAttribute('uv', new THREE.Float32BufferAttribute(uv, 2));
+  geometry.setAttribute('color', new THREE.Float32BufferAttribute(tints, 3));
+  geometry.setIndex(indices);
+  return geometry;
+}
+
 /** Local modelling units are scaled to a small, life-size perched subject. */
 export function createRobin() {
   const bird = new THREE.Group();
   bird.name = 'life-size-robin';
-  bird.position.set(0, 2.02, 0);
+  bird.position.set(0, 2.05, 0);
   bird.rotation.y = 0.8;
   bird.scale.setScalar(0.4);
   const model = createModeling(bird), rand = seededRandom(41629);
@@ -83,32 +151,32 @@ export function createRobin() {
     color: (_u, _v, h) => [0.88 + h * 0.12, 0.88 + h * 0.12, 0.88 + h * 0.12],
   });
   const plumage = new THREE.MeshPhysicalMaterial({ ...texture, vertexColors: true,
-    roughness: 0.92, normalScale: new THREE.Vector2(0.13, 0.13), sheen: 0.3,
-    sheenColor: new THREE.Color('#baaa88'), sheenRoughness: 1 });
+    roughness: 0.90, normalScale: new THREE.Vector2(0.14, 0.14), sheen: 0.45,
+    sheenColor: new THREE.Color('#d2be99'), sheenRoughness: 0.85 });
   const body = robinGeometry();
   model.mesh(body, plumage).name = 'continuous-robin-plumage';
 
-  // Dark eyes with a narrow buff orbital ring and a clear corneal reflection.
-  const eye = new THREE.MeshPhysicalMaterial({ color: '#080a08', roughness: 0.09,
-    clearcoat: 1, clearcoatRoughness: 0.04, ior: 1.38 });
-  const rim = new THREE.MeshStandardMaterial({ color: '#b29c78', roughness: 0.9 });
+  // Dark eyes with a narrow buff orbital ring, rich obsidian-chestnut depth, and a clear corneal reflection.
+  const eye = new THREE.MeshPhysicalMaterial({ color: '#0d0907', roughness: 0.04,
+    clearcoat: 1, clearcoatRoughness: 0.02, ior: 1.45 });
+  const rim = new THREE.MeshStandardMaterial({ color: '#766a50', roughness: 0.85 });
+  const eyeSpark = new THREE.MeshBasicMaterial({ color: '#ffffff' });
   for (const side of [-1, 1]) {
-    model.ellipsoid(rim, [side * 0.059, 0.17, 0.128], [0.009, 0.012, 0.0085], 28).rotation.y = side * 0.9;
-    model.ellipsoid(eye, [side * 0.062, 0.171, 0.132], [0.007, 0.0105, 0.008], 36).rotation.y = side * 0.9;
+    model.ellipsoid(rim, [side * 0.057, 0.17, 0.126], [0.0075, 0.0093, 0.0062], 28).rotation.y = side * 0.9;
+    model.ellipsoid(eye, [side * 0.059, 0.171, 0.129], [0.006, 0.0081, 0.0068], 36).rotation.y = side * 0.9;
+    const spark = new THREE.Mesh(new THREE.SphereGeometry(0.0011, 8, 6), eyeSpark);
+    spark.position.set(side * 0.0615, 0.1742, 0.134);
+    bird.add(spark);
   }
-  // A closed wedge bill replaces the overlapping cones; a fine gape follows its side.
-  const horn = new THREE.MeshStandardMaterial({ color: '#302c26', roughness: 0.5 });
-  const bill = new THREE.BufferGeometry();
-  bill.setAttribute('position', new THREE.Float32BufferAttribute([
-    -0.012, 0.133, 0.145, 0.012, 0.133, 0.145, 0, 0.145, 0.148,
-    0, 0.125, 0.148, 0, 0.128, 0.207,
-  ], 3));
-  bill.setIndex([0, 4, 2, 2, 4, 1, 1, 4, 3, 3, 4, 0, 0, 1, 3, 0, 2, 1]);
-  bill.computeVertexNormals();
+  // A closed wedge bill with horn sheen and a fine gape following its side.
+  const horn = new THREE.MeshPhysicalMaterial({ color: '#2a2620', roughness: 0.45, clearcoat: 0.25 });
+  const bill = organicGeometry([[0, 0.136, 0.141], [0, 0.135, 0.157], [0, 0.131, 0.178], [0, 0.128, 0.197]],
+    [[0.010, 0.007], [0.008, 0.006], [0.004, 0.0035], [0.0001, 0.0001]], 28, 16);
   model.mesh(bill, horn).name = 'tapered-robin-bill';
-  const gape = new THREE.MeshStandardMaterial({ color: '#171812', roughness: 0.75 });
+  const gape = new THREE.MeshStandardMaterial({ color: '#6e5840', roughness: 0.6 });
   for (const side of [-1, 1]) {
-    model.tube(gape, [[side * 0.012, 0.132, 0.15], [side * 0.006, 0.130, 0.177], [0, 0.128, 0.206]], 0.0007, 12);
+    model.tube(gape, [[side * 0.009, 0.132, 0.151], [side * 0.005, 0.130, 0.176], [0, 0.128, 0.197]], 0.00045, 12);
+    model.ellipsoid(eye, [side * 0.0066, 0.138, 0.158], [0.0015, 0.0008, 0.0020], 12);
   }
 
   const vaneSurface = createSurface({ size: 192, normalStrength: 0.8,
@@ -121,8 +189,8 @@ export function createRobin() {
     },
   });
   const vaneMaterial = new THREE.MeshPhysicalMaterial({ ...vaneSurface, color: '#ffffff',
-    side: THREE.DoubleSide, roughness: 0.88, normalScale: new THREE.Vector2(0.17, 0.17),
-    sheen: 0.25, sheenRoughness: 0.9 });
+    side: THREE.DoubleSide, roughness: 0.86, normalScale: new THREE.Vector2(0.18, 0.18),
+    sheen: 0.38, sheenColor: new THREE.Color('#dfc9a6'), sheenRoughness: 0.85 });
   const feather = featherGeometry();
   const wings = new THREE.InstancedMesh(feather, vaneMaterial, 78);
   wings.name = 'layered-folded-wings';
@@ -136,13 +204,14 @@ export function createRobin() {
   };
   let index = 0;
   for (const side of [-1, 1]) {
-    const mantle = new THREE.MeshStandardMaterial({ color: '#75654f', roughness: 0.95 });
-    model.ellipsoid(mantle, [side * 0.099, 0.025, -0.035], [0.032, 0.077, 0.110], 32);
+    const mantle = new THREE.MeshStandardMaterial({ ...vaneSurface, color: '#807357', roughness: 0.95,
+      normalScale: new THREE.Vector2(0.25, 0.25) });
+    model.ellipsoid(mantle, [side * 0.092, 0.020, -0.044], [0.027, 0.073, 0.100], 32);
     // Longer primaries below three shingled rows of shorter coverts.
     for (let j = 0; j < 12; j++) {
       const t = j / 11;
-      transform.position.set(side * (0.113 + 0.012 * Math.sin(t * Math.PI)), 0.039 - t * 0.082, -0.033);
-      orient(new THREE.Vector3(-side * 0.10, -0.32 + t * 0.12, -1), new THREE.Vector3(side, 0.1, 0));
+      transform.position.set(side * (0.124 + 0.004 * Math.sin(t * Math.PI)), 0.039 - t * 0.077, -0.025);
+      orient(new THREE.Vector3(-side * 0.06, -0.40 + t * 0.12, -1), new THREE.Vector3(side, 0.1, 0));
       transform.scale.set(0.026, 0.153 - t * 0.025, 0.009);
       transform.updateMatrix(); wings.setMatrixAt(index, transform.matrix);
       color.set('#76654f').multiplyScalar(0.88 + t * 0.16);
@@ -150,12 +219,13 @@ export function createRobin() {
     }
     for (let row = 0; row < 3; row++) for (let j = 0; j < 9; j++) {
       const t = j / 8;
-      transform.position.set(side * (0.126 + Math.sin(t * Math.PI) * 0.008),
-        0.078 - t * 0.091 - row * 0.007, 0.018 - row * 0.032);
-      orient(new THREE.Vector3(-side * 0.1, -0.4, -1), new THREE.Vector3(side, 0.2, 0.1));
-      transform.scale.set(0.025, 0.046 + row * 0.012, 0.009);
+      const y = 0.072 - t * 0.079 - row * 0.007;
+      const z = 0.008 - row * 0.030;
+      transform.position.set(side * (0.129 + row * 0.001), y, z);
+      orient(new THREE.Vector3(-side * 0.025, -0.45, -1), new THREE.Vector3(side, 0.2, 0.1));
+      transform.scale.set(0.026, 0.048 + row * 0.012, 0.005);
       transform.updateMatrix(); wings.setMatrixAt(index, transform.matrix);
-      color.set('#c4ad87').multiplyScalar(0.89 + rand() * 0.16);
+      color.set(row === 2 ? '#ab9774' : '#8c8062').multiplyScalar(0.94 + rand() * 0.12);
       wings.setColorAt(index++, color);
     }
   }
@@ -168,7 +238,7 @@ export function createRobin() {
     const spread = (i - 4.5) / 4.5;
     transform.position.set(spread * 0.028, -0.055, -0.118);
     orient(new THREE.Vector3(spread * 0.13, 0.13, -1), new THREE.Vector3(0, 1, 0));
-    transform.scale.set(0.029, 0.235 - Math.abs(spread) * 0.015, 0.010);
+    transform.scale.set(0.026, 0.185 - Math.abs(spread) * 0.012, 0.008);
     transform.updateMatrix(); tail.setMatrixAt(i, transform.matrix);
     color.set('#9b896d').multiplyScalar(0.9 + rand() * 0.1);
     tail.setColorAt(i, color);
@@ -176,43 +246,39 @@ export function createRobin() {
   tail.castShadow = tail.receiveShadow = true;
   bird.add(tail);
 
-  // Down lies on the actual lofted surface, sharing its colour and tangent.
-  // Avoid the eye and bill region so tiny feather cards cannot obscure focus.
-  const downMaterial = new THREE.MeshStandardMaterial({ color: '#ffffff', roughness: 1, side: THREE.DoubleSide });
-  const down = new THREE.InstancedMesh(feather, downMaterial, 1100);
+  const downMaterial = new THREE.MeshPhysicalMaterial({ ...texture, normalMap: vaneSurface.normalMap,
+    vertexColors: true, roughness: 0.95,
+    normalScale: new THREE.Vector2(0.12, 0.12), sheen: 0.35,
+    sheenColor: new THREE.Color('#d8be94'), sheenRoughness: 0.9, side: THREE.DoubleSide });
+  const down = model.mesh(contourPlumage(body, rand), downMaterial);
   down.name = 'surface-following-down';
-  const positions = body.attributes.position, normals = body.attributes.normal, colors = body.attributes.color;
-  for (let i = 0; i < down.count; i++) {
-    const row = 8 + Math.floor(rand() * 79), column = Math.floor(rand() * 96);
-    const vertex = row * 97 + column;
-    const normal = new THREE.Vector3().fromBufferAttribute(normals, vertex);
-    transform.position.fromBufferAttribute(positions, vertex).addScaledVector(normal, 0.0008);
-    const direction = new THREE.Vector3(0, -1, -0.12);
-    direction.addScaledVector(normal, -direction.dot(normal));
-    orient(direction, normal);
-    transform.scale.set(0.007 + rand() * 0.004, 0.010 + rand() * 0.006, 0.002);
-    transform.updateMatrix(); down.setMatrixAt(i, transform.matrix);
-    color.fromBufferAttribute(colors, vertex).multiplyScalar(0.96 + rand() * 0.08);
-    down.setColorAt(i, color);
-  }
-  down.receiveShadow = true;
-  bird.add(down);
+  down.castShadow = false;
 
   // Three forward toes and one rear toe curl around the perch, ending in dark claws.
-  const leg = new THREE.MeshStandardMaterial({ color: '#927564', roughness: 0.8 });
-  const claw = new THREE.MeshStandardMaterial({ color: '#453e35', roughness: 0.6 });
+  const scutes = createSurface({ size: 128, repeat: [2, 5], normalStrength: 0.8,
+    height: (u, v) => 0.5 + Math.sin(v * Math.PI * 32 + Math.sin(u * Math.PI * 8) * 0.6) * 0.18,
+    color: (_u, _v, h) => [0.83 + h * 0.12, 0.82 + h * 0.12, 0.81 + h * 0.12],
+  });
+  const leg = new THREE.MeshPhysicalMaterial({ ...scutes, color: '#977d69', roughness: 0.78,
+    normalScale: new THREE.Vector2(0.18, 0.18), clearcoat: 0.08 });
+  const claw = new THREE.MeshPhysicalMaterial({ color: '#383028', roughness: 0.45, clearcoat: 0.25 });
+  const toe = (points: [number, number, number][], radius: number, material: THREE.Material, sharp = false) =>
+    model.mesh(organicGeometry(points, points.map((_, i) => {
+      const r = radius * (1 - i / (points.length - 1) * (sharp ? 0.98 : 0.45));
+      return [r, r];
+    }), 16, 10), material);
   for (const side of [-1, 1]) {
     const x = side * 0.038;
-    model.tube(leg, [[x, -0.108, 0.008], [x, -0.140, 0.018], [x, -0.155, 0.045]], 0.004, 16);
-    for (let toe = -1; toe <= 1; toe++) {
-      const tipX = x + toe * 0.017;
-      model.tube(leg, [[x, -0.155, 0.045], [x + toe * 0.012, -0.160, 0.072],
-        [tipX, -0.181, 0.076]], 0.0024, 16);
-      model.tube(claw, [[tipX, -0.180, 0.076], [tipX, -0.188, 0.071],
-        [tipX, -0.191, 0.064]], 0.0014, 10);
+    toe([[x, -0.108, 0.008], [x, -0.140, 0.018], [x, -0.155, 0.045]], 0.0045, leg);
+    for (let digit = -1; digit <= 1; digit++) {
+      const tipX = x + digit * 0.017;
+      toe([[x, -0.155, 0.045], [x + digit * 0.012, -0.160, 0.072],
+        [tipX, -0.181, 0.076]], 0.0027, leg);
+      toe([[tipX, -0.180, 0.076], [tipX, -0.188, 0.071],
+        [tipX, -0.191, 0.064]], 0.0015, claw, true);
     }
-    model.tube(leg, [[x, -0.153, 0.030], [x + side * 0.009, -0.168, -0.022], [x, -0.188, -0.023]], 0.0026, 16);
-    model.tube(claw, [[x, -0.187, -0.023], [x, -0.196, -0.016], [x, -0.198, -0.008]], 0.0014, 10);
+    toe([[x, -0.153, 0.030], [x + side * 0.009, -0.168, -0.022], [x, -0.188, -0.023]], 0.0028, leg);
+    toe([[x, -0.187, -0.023], [x, -0.196, -0.016], [x, -0.198, -0.008]], 0.0015, claw, true);
   }
   return bird;
 }

@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest';
 import { PhysicalCamera, PathTracingSceneGenerator, ShapedAreaLight } from 'three-gpu-pathtracer';
 import { configurePhysicalCamera } from './pathTracing';
 import { bakeInstances, createPathTracingScene } from './pathTracingScene';
+import { doubleSideCorrectionShader } from './pathTracingDoubleSide';
 import { solarRadiance } from '../optics/sun';
 import { addVisibleSun } from '../scenes/sunlight';
 import { applyAfternoonSky, afternoonSkyColor } from '../scenes/afternoonSky';
@@ -123,5 +124,50 @@ describe('physical path tracing scene', () => {
     expect(source.children).toContain(water);
     expect(water.material).toBeInstanceOf(THREE.ShaderMaterial);
     water.geometry.dispose(); water.material.dispose();
+  });
+
+  it('patches tracer shader so double-sided geometry and transparent glazing receive sunlight', () => {
+    const rawShader = /* glsl */ `
+      surf.faceNormal = surfaceHit.faceNormal;
+      surf.normal = normal;
+      bool isTransmissiveRay = ! surf.volumeParticle && dot( scatterRec.direction, surf.faceNormal * surfaceHit.side ) < 0.0;
+      bool isShadowRay = state.isShadowRay;
+    `;
+    const patched = doubleSideCorrectionShader(rawShader);
+    expect(patched).toContain('surf.faceNormal = surfaceHit.faceNormal * surfaceHit.side;');
+    expect(patched).toContain('bool isTransmissiveRay = ! surf.volumeParticle && dot( scatterRec.direction, surf.faceNormal ) < 0.0;');
+    expect(patched).toContain('bool isShadowRay = true;');
+  });
+
+  it('preserves nested object world matrices into baked BVH geometry', () => {
+    const scene = new THREE.Scene();
+    const group = new THREE.Group();
+    group.position.set(10, 20, 30);
+    const box = new THREE.Mesh(new THREE.BoxGeometry(1, 1, 1), new THREE.MeshStandardMaterial());
+    box.name = 'test-nested-box';
+    group.add(box);
+    scene.add(group);
+    const sun = new THREE.DirectionalLight(0xffffff, 1);
+    scene.add(sun, sun.target);
+    const physical = createPathTracingScene({
+      scene,
+      sunlight: { sun, density: 0, distance: 10, groundHeight: 0, heightFalloff: 0 },
+      dispose() {},
+    });
+    const copiedBox = physical.scene.getObjectByName('test-nested-box');
+    expect(copiedBox?.matrixWorld.elements[12]).toBe(10);
+    expect(copiedBox?.matrixWorld.elements[13]).toBe(20);
+    expect(copiedBox?.matrixWorld.elements[14]).toBe(30);
+
+    const generated = new PathTracingSceneGenerator(physical.scene).generate();
+    const pos = generated.geometry.attributes.position;
+    expect(pos.getX(0)).toBeCloseTo(10.5, 1);
+    expect(pos.getY(0)).toBeCloseTo(20.5, 1);
+    expect(pos.getZ(0)).toBeCloseTo(30.5, 1);
+
+    generated.geometry.dispose();
+    physical.dispose();
+    box.geometry.dispose();
+    box.material.dispose();
   });
 });

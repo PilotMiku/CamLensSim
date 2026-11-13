@@ -14,11 +14,11 @@ export const animalScene: SceneDefinition = {
   defaultPose: { x: 0, y: 2.13, z: 2.55, yawDeg: 0, pitchDeg: -1.5 },
   cameraNear: 0.04, cameraFar: 35,
   poseLimits: { ...DEFAULT_POSE_LIMITS, minZ: -1.5, maxZ: 7 },
-  defaultFocusPoint: { x: 0.0206, y: 2.0884, z: 0.0546 },
+  defaultFocusPoint: { x: 0.0214, y: 2.1184, z: 0.0545 },
   landmarks: [
-    { id: 'eye', label: '近侧眼睛', position: { x: 0.0206, y: 2.0884, z: 0.0546 } },
-    { id: 'body', label: '胸部羽毛', position: { x: 0.018, y: 2.02, z: 0.055 } },
-    { id: 'tail', label: '尾羽', position: { x: -0.0832, y: 2.006, z: -0.0808 } },
+    { id: 'eye', label: '近侧眼睛', position: { x: 0.0214, y: 2.1184, z: 0.0545 } },
+    { id: 'body', label: '胸部羽毛', position: { x: 0.018, y: 2.05, z: 0.055 } },
+    { id: 'tail', label: '尾羽', position: { x: -0.073, y: 2.036, z: -0.070 } },
     { id: 'bokeh', label: '林间光隙', position: { x: -0.9, y: 2.4, z: -4.2 } },
   ],
   create() {

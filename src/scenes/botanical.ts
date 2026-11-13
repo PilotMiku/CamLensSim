@@ -44,7 +44,8 @@ export function foliageMaterial() {
       return [0.38 + h * 0.14 - edge, 0.51 + h * 0.22, 0.22 + h * 0.10];
     }, roughness: () => 0.66,
   });
-  return new THREE.MeshStandardMaterial({ ...surface, color: '#e7e8c3', roughness: 0.68,
+  return new THREE.MeshPhysicalMaterial({ ...surface, color: '#e7e8c3', roughness: 0.65,
+    sheen: 0.35, sheenColor: new THREE.Color('#b8d96d'), sheenRoughness: 0.8,
     side: THREE.DoubleSide, normalScale: new THREE.Vector2(0.25, 0.25) });
 }
 
@@ -62,7 +63,7 @@ export function blossomGeometry(petalCount = 5) {
       const y = positions.getY(i) * 0.62 + 0.52;
       const z = positions.getZ(i) * 0.045 + y * y * 0.14;
       positions.setXYZ(i, x * Math.cos(angle) - y * Math.sin(angle), x * Math.sin(angle) + y * Math.cos(angle), z);
-      color.set('#fff5f1').lerp(new THREE.Color('#d88e9b'), Math.max(0, 1 - y) * 0.55);
+      color.set('#fff8f5').lerp(new THREE.Color('#ea7a93'), Math.max(0, 1 - y) * 0.62);
       colors.push(color.r, color.g, color.b);
     }
     geometry.setAttribute('color', new THREE.Float32BufferAttribute(colors, 3));
@@ -71,7 +72,7 @@ export function blossomGeometry(petalCount = 5) {
   }
   const center = new THREE.SphereGeometry(0.14, 6, 4);
   const centerColors: number[] = [];
-  const color = new THREE.Color('#d7b36d');
+  const color = new THREE.Color('#e5bd62');
   for (let i = 0; i < center.attributes.position.count; i++) centerColors.push(color.r, color.g, color.b);
   center.setAttribute('color', new THREE.Float32BufferAttribute(centerColors, 3));
   center.translate(0, 0, 0.08);
@@ -106,7 +107,8 @@ export function cherryTree(seed: number, height: number, bark: THREE.Material) {
   const trunk = new THREE.Mesh(wood, bark);
   trunk.castShadow = trunk.receiveShadow = true;
   group.add(trunk);
-  const material = new THREE.MeshStandardMaterial({ color: '#ffffff', vertexColors: true, roughness: 0.65, side: THREE.DoubleSide });
+  const material = new THREE.MeshPhysicalMaterial({ color: '#ffffff', vertexColors: true,
+    roughness: 0.62, sheen: 0.45, sheenColor: new THREE.Color('#ffc8d5'), side: THREE.DoubleSide });
   const flowers = new THREE.InstancedMesh(blossomGeometry(), material, blossoms.length);
   const transform = new THREE.Object3D();
   for (let i = 0; i < blossoms.length; i++) {

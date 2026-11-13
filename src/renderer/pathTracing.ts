@@ -5,6 +5,7 @@ import type { SceneInstance } from '../scenes/types';
 import { installTracerSolarBackground } from './physicalSun';
 import { PathTracingDenoiser } from './pathTracingDenoise';
 import { installTracerPlanarFocus } from './pathTracingFocus';
+import { installTracerDoubleSideCorrection } from './pathTracingDoubleSide';
 
 export function configurePhysicalCamera(camera: PhysicalCamera, source: THREE.PerspectiveCamera,
   lens: { focalMm: number; aperture: number; focusM: number; blades: number }, dof: boolean, sensorHeight: number) {
@@ -35,6 +36,7 @@ export class PathTracingPreview {
     this.tracer = new WebGLPathTracer(renderer);
     installTracerPlanarFocus(this.tracer);
     installTracerSolarBackground(this.tracer, this.physicalWorld.solar);
+    installTracerDoubleSideCorrection(this.tracer);
     this.tracer.textureSize.set(256, 256);
     this.tracer.bounces = 6;
     this.tracer.transmissiveBounces = 8;

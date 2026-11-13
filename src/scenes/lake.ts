@@ -25,13 +25,15 @@ export function createLake() {
       varying vec3 vWorldPosition;
       void main() {
         vec4 uv = vReflectionUv;
-        float wave = sin(vWorldPosition.x * 6.7 + vWorldPosition.z * 2.3)
+        float wave1 = sin(vWorldPosition.x * 6.7 + vWorldPosition.z * 2.3)
           * sin(vWorldPosition.z * 12.1 + vWorldPosition.x * 0.9);
-        uv.xy += vec2(wave * 0.00035, sin(vWorldPosition.z * 8.0) * 0.00016) * uv.w;
+        float wave2 = sin(vWorldPosition.z * 18.4 - vWorldPosition.x * 5.1) * 0.5;
+        float wave = wave1 + wave2;
+        uv.xy += vec2(wave * 0.00042, sin(vWorldPosition.z * 8.0 + vWorldPosition.x * 2.5) * 0.00022) * uv.w;
         vec3 reflection = texture2DProj(tDiffuse, uv).rgb;
         float grazing = 1.0 - clamp(normalize(cameraPosition - vWorldPosition).y, 0.0, 1.0);
         float fresnel = 0.22 + 0.78 * pow(grazing, 4.0);
-        vec3 water = vec3(0.035, 0.115, 0.125);
+        vec3 water = vec3(0.028, 0.098, 0.110);
         vec3 result = mix(water, reflection * mix(vec3(1.0), color, 0.12), fresnel);
         gl_FragColor = vec4(result, 1.0);
         #include <tonemapping_fragment>
