@@ -45,8 +45,12 @@ function pleatedSkirt(topY: number, bottomY: number, topR: number, bottomR: numb
     const radius = THREE.MathUtils.lerp(topR, bottomR, Math.pow(t, 0.92));
     for (let s = 0; s <= segments; s++) {
       const a = s / segments * Math.PI * 2;
-      const pleat = 1 + Math.sin(a * pleats) * 0.045 * (0.35 + t * 0.65);
-      positions.push(Math.cos(a) * radius * pleat, y, Math.sin(a) * radius * depth * pleat);
+      // Knife pleats open below the waistband and swing towards the forward knee.
+      const phase = a * pleats + t * t * Math.sin(a - 0.5) * 1.15;
+      const fold = Math.sin(phase) - 0.38 * Math.sin(2 * phase);
+      const pleat = 1 + fold * (0.015 + t * 0.085);
+      const hem = t * t * (0.006 * Math.cos(a - 0.7) + 0.003 * fold);
+      positions.push(Math.cos(a) * radius * pleat, y + hem, Math.sin(a) * radius * depth * pleat);
       uvs.push(s / segments, t);
       if (row < rows && s < segments) {
         const v = row * (segments + 1) + s;
@@ -212,10 +216,13 @@ export function createPortraitModel() {
   bow.rotation.x = -0.12;
   torso.add(bow);
   for (const side of [-1, 1]) {
-    const loop = new THREE.Mesh(new THREE.SphereGeometry(1, 24, 16), red);
-    loop.position.set(side * 0.029, 0.003, 0.0);
-    loop.scale.set(0.031, 0.019, 0.009);
-    loop.rotation.z = side * -0.38;
+    // A strip folded back to the knot leaves the loop open at the sides.
+    const loop = new THREE.Mesh(sheetGeometry(20, 6, (u, v) => {
+      const angle = v * Math.PI * 2;
+      const reach = (1 - Math.cos(angle)) / 2;
+      return V(side * (0.004 + reach * 0.055), reach * 0.011 + (u - 0.5) * (0.010 + 0.028 * reach),
+        Math.sin(angle) * 0.012 - (u - 0.5) ** 2 * 0.009);
+    }), red);
     loop.castShadow = true;
     bow.add(loop);
   }

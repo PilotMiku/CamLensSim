@@ -72,14 +72,29 @@ export const outdoorScene: SceneDefinition = {
           : [0.40 + h * 0.20, 0.40 + h * 0.19, 0.35 + h * 0.18]; },
     });
     const stoneMaterial = surfaceMaterial(rock, '#e5e3d5', 0.93);
+    // Fractured, partially buried boulders share one mesh across shore and trail.
+    const stoneGeometry = new THREE.IcosahedronGeometry(1, 2);
+    const vertices = stoneGeometry.attributes.position;
+    for (let i = 0; i < vertices.count; i++) {
+      const x = vertices.getX(i), y = vertices.getY(i), z = vertices.getZ(i);
+      const grain = 1 + 0.13 * Math.sin(4 * x + 2 * z) * Math.cos(3 * y - z);
+      vertices.setXYZ(i, x * grain + 0.12 * y, Math.min(y * grain, 0.67 + 0.17 * x), z * grain);
+    }
+    stoneGeometry.computeVertexNormals();
+    const stones = new THREE.InstancedMesh(stoneGeometry, stoneMaterial, 75 + 16);
+    stones.castShadow = stones.receiveShadow = true;
+    scene.add(stones);
+    const stone = new THREE.Object3D();
     for (let i = 0; i < 75; i++) {
       const angle = rand() * Math.PI * 2;
       const x = 3 + Math.cos(angle) * (31 + rand() * 5);
       const z = -46 + Math.sin(angle) * (35 + rand() * 4);
       const size = 0.2 + rand() * 0.8;
-      const stone = mesh(new THREE.IcosahedronGeometry(size, 3), stoneMaterial, [x, Math.max(-1.05, terrainHeight(x, z)), z]);
-      stone.scale.set(1.5, 0.5, 0.8 + rand());
+      stone.position.set(x, terrainHeight(x, z), z);
+      stone.scale.set(1.5, 0.5, 0.8 + rand()).multiplyScalar(size);
       stone.rotation.set(rand(), rand() * 6.28, rand());
+      stone.updateMatrix();
+      stones.setMatrixAt(i, stone.matrix);
     }
 
     // Three true distant ridgelines, with relief, sediment variation and snow caps.
@@ -91,12 +106,16 @@ export const outdoorScene: SceneDefinition = {
         const x = rp.getX(i), localZ = rp.getZ(i);
         const peak = 19 + layer * 8 + 18 * Math.abs(Math.sin(x * 0.019 + layer * 1.7))
           + 9 * Math.sin(x * 0.059 + layer) + 4 * Math.sin(x * 0.13 + 0.5);
-        const cross = Math.max(0, 1 - Math.abs(localZ) / 38);
+        const crest = 5.2 * Math.sin(x * 0.073 + layer) + 2.8 * Math.sin(x * 0.18 - layer);
+        const offset = localZ - crest;
+        const cross = Math.max(0, 1 - Math.abs(offset) / (38 - Math.sign(offset) * crest));
         const noise = fbm2D((x + 150) / 300, (localZ + 38) / 76, 12, 6, 100 + layer, 6);
         const ridgeNoise = 1 - Math.abs(2 * noise - 1);
         const erosion = Math.pow(ridgeNoise, 2) * 7.5
           + 1.0 * Math.abs(Math.sin(x * 0.41 + localZ * 0.23));
-        const height = -0.5 + peak * Math.pow(cross, 0.75) - cross * erosion;
+        const spur = Math.abs(Math.sin(x * 0.18 + offset * 0.12 + 2.8 * noise));
+        const relief = Math.sin(cross * Math.PI) * (spur * 7 + noise * 3);
+        const height = -0.5 + peak * cross ** 0.91 - cross * erosion + relief;
         rp.setY(i, height);
       }
       ridge.computeVertexNormals();
@@ -114,7 +133,8 @@ export const outdoorScene: SceneDefinition = {
       ridge.setAttribute('color', new THREE.Float32BufferAttribute(ridgeColors, 3));
       const material = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.98,
         normalMap: rock.normalMap, normalScale: new THREE.Vector2(0.26, 0.26) });
-      mesh(ridge, material, [0, 0, -118 - layer * 48]);
+      // Keep the nearest mountain's toe behind the far bank and its trees.
+      mesh(ridge, material, [0, 0, -132 - layer * 48]);
     }
 
     const birch = barkMaterial(302);
@@ -129,12 +149,22 @@ export const outdoorScene: SceneDefinition = {
     }
     for (let i = 0; i < 48; i++) {
       const side = i % 2 ? 1 : -1;
-      const x = side * (28 + rand() * 58), z = -22 - rand() * 100;
+      // Cluster some of the existing pines along the opposite waterline.
+      let x = side * (28 + rand() * 58), z = -22 - rand() * 100;
+      if (i % 3 !== 0) {
+        const grove = (i % 5) * 0.48 + 0.60;
+        const angle = grove + (rand() - 0.5) * 0.32;
+        const setback = 1 + rand() * 0.10;
+        x = 3 + Math.cos(angle) * 34 * setback;
+        z = -46 - Math.sin(angle) * 38 * setback;
+      }
       const tree = makePine(3 + rand() * 6, 10000 + i, trunkMaterial, pineMaterial);
       tree.position.set(x, terrainHeight(x, z), z);
       scene.add(tree);
     }
-    scene.add(meadow(terrainHeight, 492, [-15, 17, 4, 17], 18000));
+    const pathCenter = (z: number) => 3.5 + Math.sin(z * 0.15) * 2;
+    scene.add(meadow(terrainHeight, 492, [-15, 17, 4, 17], 18000,
+      (x, z) => Math.abs(x - pathCenter(z)) - 0.575));
     // Meadow blades are batched; the central sightline to the water stays open.
     const grass = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.95, side: THREE.DoubleSide });
     for (let i = 0; i < 42; i++) {
@@ -147,7 +177,7 @@ export const outdoorScene: SceneDefinition = {
     const transform = new THREE.Object3D();
     for (let i = 0; i < wildflowers.count; i++) {
       const x = -12 + rand() * 26, z = 6 + rand() * 11;
-      const track = 3.5 + Math.sin(z * 0.15) * 2;
+      const track = pathCenter(z);
       transform.position.set(x, terrainHeight(x, z) + 0.12 + rand() * 0.23, z);
       transform.rotation.set(-Math.PI / 2 + rand() * 0.7, rand() * 6.28, rand());
       transform.scale.setScalar(Math.abs(x - track) < 0.65 ? 0.001 : 0.015 + rand() * 0.015);
@@ -168,7 +198,7 @@ export const outdoorScene: SceneDefinition = {
     const pp = path.attributes.position;
     for (let i = 0; i < pp.count; i++) {
       const z = pp.getZ(i) + 2;
-      const x = pp.getX(i) + 3.5 + Math.sin(z * 0.15) * 2;
+      const x = pp.getX(i) + pathCenter(z);
       pp.setXYZ(i, x, terrainHeight(x, z) + 0.018, z);
     }
     path.computeVertexNormals();
@@ -176,8 +206,11 @@ export const outdoorScene: SceneDefinition = {
     // Small foreground stones soften transitions between meadow and trail.
     for (let i = 0; i < 16; i++) {
       const x = -7 + rand() * 18, z = 6 + rand() * 9;
-      const stone = mesh(new THREE.IcosahedronGeometry(0.18 + rand() * 0.3, 3), stoneMaterial, [x, terrainHeight(x, z), z]);
-      stone.scale.set(1.3, 0.65, 1);
+      stone.position.set(x, terrainHeight(x, z), z);
+      stone.rotation.set(0, i * 2.4, 0);
+      stone.scale.set(1.3, 0.65, 1).multiplyScalar(0.18 + rand() * 0.3);
+      stone.updateMatrix();
+      stones.setMatrixAt(75 + i, stone.matrix);
     }
     scene.add(new THREE.HemisphereLight('#cee6ff', '#80764e', 0.7));
     const sun = new THREE.DirectionalLight('#fff0d2', 4.2);

@@ -61,15 +61,16 @@ export const portraitScene: SceneDefinition = {
       height: (u, v) => fbm2D(u, v, 90, 90, 51),
       color: (_u, _v, h) => [0.58 + h * 0.21, 0.53 + h * 0.21, 0.43 + h * 0.20],
     });
+    const pathCenter = (z: number) => Math.sin(z * 0.09) * 0.65 + 0.65;
     const path = new THREE.PlaneGeometry(1.7, 30, 8, 100).rotateX(-Math.PI / 2);
     const p = path.attributes.position;
     for (let i = 0; i < p.count; i++) {
       const z = p.getZ(i) - 9;
-      p.setXYZ(i, p.getX(i) + Math.sin(z * 0.09) * 0.65 + 0.65, 0.003, z);
+      p.setXYZ(i, p.getX(i) + pathCenter(z), 0.003, z);
     }
     path.computeVertexNormals();
     mesh(path, new THREE.MeshStandardMaterial({ ...gravel, roughness: 0.95 }));
-    scene.add(meadow(() => 0, 682, [-7, 7, -14, 4], 5500));
+    scene.add(meadow(() => 0, 682, [-7, 7, -14, 4], 5500, (x, z) => Math.abs(x - pathCenter(z)) - 0.85));
     // Fallen petals are flat geometry on the path, rather than floating pink spheres.
     const petalGeometry = new THREE.SphereGeometry(1, 8, 4);
     const petals = new THREE.InstancedMesh(petalGeometry,

@@ -141,7 +141,7 @@ export function leafSpray(points: Point[], seed: number, material: THREE.Materia
 }
 
 /** Batched meadow blades, with open ground along the winding footpath. */
-export function meadow(height: (x: number, z: number) => number, seed: number, bounds: [number, number, number, number], count = 9000) {
+export function meadow(height: (x: number, z: number) => number, seed: number, bounds: [number, number, number, number], count: number, distanceToPathEdge: (x: number, z: number) => number) {
   const rand = seededRandom(seed);
   const blade = new THREE.PlaneGeometry(1, 1, 1, 3);
   const positions = blade.attributes.position;
@@ -153,19 +153,22 @@ export function meadow(height: (x: number, z: number) => number, seed: number, b
   const material = new THREE.MeshStandardMaterial({ color: '#ffffff', side: THREE.DoubleSide, roughness: 0.9 });
   const blades = new THREE.InstancedMesh(blade, material, count);
   const transform = new THREE.Object3D(), color = new THREE.Color();
+  let planted = 0;
   for (let i = 0; i < count; i++) {
     const x = THREE.MathUtils.lerp(bounds[0], bounds[1], rand());
     const z = THREE.MathUtils.lerp(bounds[2], bounds[3], rand());
-    const path = 3.5 + Math.sin(z * 0.15) * 2;
-    const bare = Math.abs(x - path) < 0.63;
+    const verge = THREE.MathUtils.smoothstep(distanceToPathEdge(x, z), -0.04, 0.32);
+    if (verge === 0) continue;
     transform.position.set(x, height(x, z), z);
     transform.rotation.set((rand() - 0.5) * 0.15, rand() * 6.28, (rand() - 0.5) * 0.3);
-    transform.scale.set(bare ? 0.002 : 0.012 + rand() * 0.025, bare ? 0.01 : 0.11 + rand() * 0.28, 1);
+    const length = (0.11 + rand() * 0.28) * (0.2 + 0.8 * verge);
+    transform.scale.set(0.012 + rand() * 0.025, length, length);
     transform.updateMatrix();
-    blades.setMatrixAt(i, transform.matrix);
+    blades.setMatrixAt(planted, transform.matrix);
     color.setHSL(0.18 + rand() * 0.09, 0.27 + rand() * 0.25, 0.20 + rand() * 0.18);
-    blades.setColorAt(i, color);
+    blades.setColorAt(planted++, color);
   }
+  blades.count = planted;
   blades.receiveShadow = true;
   return blades;
 }

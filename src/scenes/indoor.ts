@@ -299,17 +299,21 @@ export const indoorScene: SceneDefinition = {
     addContactShadow(tableGroup, contactTexture, 0, 0.004, 0, 2.6, 2.6, 0.34);
     addContactShadow(tableGroup, contactTexture, 0, TABLE_TOP + 0.003, 0, 0.9, 0.9, 0.22);
 
-    // Coiled linen runner under the vase.
-    const clothGeometry = new THREE.PlaneGeometry(0.49, 1.30, 48, 80);
-    const clothPosition = clothGeometry.attributes.position as THREE.BufferAttribute;
+    // Wrap the runner around the circular table edge before letting the hem hang.
+    const clothGeometry = new THREE.PlaneGeometry(0.52, 1.65, 48, 80);
+    const clothPosition = clothGeometry.attributes.position;
     for (let i = 0; i < clothPosition.count; i++) {
-      const x = clothPosition.getX(i);
-      const z = clothPosition.getY(i) + 0.24;
-      const edge = Math.sqrt(Math.max(0, 0.825 ** 2 - (x - 0.12) ** 2));
-      const overhang = Math.max(0, z - edge);
-      const fold = 0.012 + 0.004 * Math.sin(x * 65 + z * 6)
-        + 0.003 * Math.sin(z * 28 - x * 12);
-      clothPosition.setXYZ(i, x - 0.12, TABLE_TOP + fold - overhang * 3.8, z);
+      const x = clothPosition.getX(i) - 0.12;
+      const along = 0.40 - clothPosition.getY(i);
+      const edge = Math.sqrt(0.825 ** 2 - x ** 2);
+      const hanging = Math.max(0, along - edge);
+      const bendRadius = 0.032;
+      const bend = Math.min(hanging / bendRadius, Math.PI / 2);
+      const drop = bendRadius * (1 - Math.cos(bend)) + Math.max(0, hanging - bendRadius * Math.PI / 2);
+      const ripple = Math.sin(x * 64 + along * 3) + 0.35 * Math.sin(x * 101 - along * 5);
+      const folds = 0.004 + 0.014 * THREE.MathUtils.smoothstep(drop, 0, 0.30);
+      const z = Math.min(along, edge) + (bendRadius + ripple * folds) * Math.sin(bend);
+      clothPosition.setXYZ(i, x, TABLE_TOP + 0.010 + ripple * folds * Math.cos(bend) - drop, z);
     }
     clothGeometry.computeVertexNormals();
     const cloth = new THREE.Mesh(clothGeometry, linenMaterial);
@@ -458,8 +462,23 @@ export const indoorScene: SceneDefinition = {
       [0.094, 0.33],
       [0.082, 0.345],
       [0.075, 0.33],
+      [0.076, 0.297],
+      [0.110, 0.253],
+      [0.138, 0.178],
+      [0.130, 0.065],
+      [0.08, 0.024],
+      [0, 0.024],
     ];
     const pitcherGeometry = ceramicGeometry(pitcherProfile);
+    // Pull both walls of the lip opposite the handle into a pouring spout.
+    const rim = pitcherGeometry.attributes.position;
+    for (let i = 0; i < rim.count; i++) {
+      const x = rim.getX(i), y = rim.getY(i), z = rim.getZ(i);
+      const lip = Math.max(0, -x / (Math.hypot(x, z) || 1)) ** 9
+        * THREE.MathUtils.smoothstep(y, 0.25, 0.34);
+      rim.setXYZ(i, x - 0.058 * lip, y + 0.018 * lip, z);
+    }
+    pitcherGeometry.computeVertexNormals();
     add(pitcherGeometry, tealMaterial, 0.36, TABLE_TOP + 0.004, 0.06).scale.set(1, 1, 0.96);
     const handleCurve = new THREE.CatmullRomCurve3([
       new THREE.Vector3(0.1, 0.27, 0),

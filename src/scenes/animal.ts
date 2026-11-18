@@ -38,17 +38,20 @@ export const animalScene: SceneDefinition = {
       new THREE.Vector3(-1.5, 1.77, -0.12), new THREE.Vector3(-0.5, 1.86, -0.05),
       new THREE.Vector3(0.3, 1.88, 0.03), new THREE.Vector3(1.2, 2.03, -0.08),
     ]);
+    // The crown of the perch meets the toe pads at world Y ≈ 1.988 m.
+    const perchLift = 0.087;
+    const perchRadius = (t: number) => 0.037 * (1.25 - t * 0.55);
     const branch = new THREE.TubeGeometry(branchCurve, 80, 0.037, 14, false);
     const bp = branch.attributes.position;
     for (let i = 0; i < bp.count; i++) {
       const t = branch.attributes.uv.getX(i);
       const center = branchCurve.getPointAt(t);
-      const taper = 1.25 - t * 0.55;
+      const taper = perchRadius(t) / branch.parameters.radius;
       bp.setXYZ(i, center.x + (bp.getX(i) - center.x) * taper,
         center.y + (bp.getY(i) - center.y) * taper, center.z + (bp.getZ(i) - center.z) * taper);
     }
     branch.computeVertexNormals();
-    mesh(branch, branchMaterial, [0, 0.06, 0]);
+    mesh(branch, branchMaterial, [0, perchLift, 0]);
     for (const side of [-1, 1]) {
       tube(branchMaterial, [[side * 0.63, 1.96, 0], [side * 0.82, 2.10, -0.02],
         [side * 1.07, 2.18, -0.06], [side * 1.22, 2.26, -0.05]], 0.008);
@@ -70,7 +73,7 @@ export const animalScene: SceneDefinition = {
     for (let i = 0; i < 26; i++) {
       const t = rand();
       const p = branchCurve.getPointAt(t);
-      ellipsoid(lichen, [p.x, p.y + 0.095, p.z], [0.008 + rand() * 0.013, 0.003, 0.01], 12);
+      ellipsoid(lichen, [p.x, p.y + perchLift + perchRadius(t) - 0.001, p.z], [0.008 + rand() * 0.013, 0.003, 0.01], 12);
     }
 
     scene.add(createRobin());
@@ -87,10 +90,11 @@ export const animalScene: SceneDefinition = {
     const moss = new THREE.InstancedMesh(new THREE.IcosahedronGeometry(1, 1),
       new THREE.MeshStandardMaterial({ color: '#7f8950', roughness: 1 }), 600);
     for (let i = 0; i < moss.count; i++) {
-      const p = branchCurve.getPointAt(rand()), angle = rand() * Math.PI;
-      transform.position.set(p.x, p.y + 0.06 + Math.sin(angle) * 0.037, p.z + Math.cos(angle) * 0.037);
-      transform.rotation.set(rand(), rand(), rand());
-      transform.scale.set(0.002 + rand() * 0.008, 0.001 + rand() * 0.003, 0.004 + rand() * 0.008);
+      const t = rand(), p = branchCurve.getPointAt(t), angle = rand() * Math.PI;
+      const radius = perchRadius(t) - 0.0007;
+      transform.position.set(p.x, p.y + perchLift + Math.sin(angle) * radius, p.z + Math.cos(angle) * radius);
+      transform.rotation.set(Math.PI / 2 - angle, 0, (rand() - 0.5) * 0.7);
+      transform.scale.set(0.003 + rand() * 0.008, 0.0008 + rand() * 0.0013, 0.002 + rand() * 0.004);
       transform.updateMatrix();
       moss.setMatrixAt(i, transform.matrix);
     }

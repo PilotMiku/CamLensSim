@@ -30,10 +30,12 @@ function robinGeometry() {
       const x = Math.cos(a) * Math.max(0.001, p.y), z = zc + front * depth;
       positions.push(x, p.x, z);
       const belly = (1 - THREE.MathUtils.smoothstep(p.x, -0.10, 0.0)) * THREE.MathUtils.smoothstep(front, -0.45, 0.3);
+      const bibHeight = p.x - 0.038 * (1 - Math.max(0, front)) ** 2
+        + 0.003 * Math.sin(a * 23 + p.x * 48);
       const bibCore = THREE.MathUtils.smoothstep(front + 0.025 * Math.sin(row * 2.3 + j * 1.7), -0.05, 0.55)
-        * THREE.MathUtils.smoothstep(p.x, -0.065, -0.012) * (1 - THREE.MathUtils.smoothstep(p.x, 0.175, 0.205));
+        * THREE.MathUtils.smoothstep(bibHeight, -0.065, -0.012) * (1 - THREE.MathUtils.smoothstep(p.x, 0.175, 0.205));
       const bibFringe = THREE.MathUtils.smoothstep(front, -0.18, 0.6)
-        * THREE.MathUtils.smoothstep(p.x, -0.08, -0.01) * (1 - THREE.MathUtils.smoothstep(p.x, 0.18, 0.215));
+        * THREE.MathUtils.smoothstep(bibHeight, -0.08, -0.01) * (1 - THREE.MathUtils.smoothstep(p.x, 0.18, 0.215));
       const sideFlank = (1 - Math.abs(front)) * THREE.MathUtils.smoothstep(p.x, -0.10, 0.05);
 
       color.copy(brown).lerp(flank, sideFlank * 0.45).lerp(buff, belly).lerp(goldFringe, bibFringe * 0.6).lerp(rust, bibCore);
@@ -102,14 +104,14 @@ function contourPlumage(body: THREE.BufferGeometry, random: () => number) {
     if (out instanceof THREE.Color) out.setRGB(...components as [number, number, number]);
     else out.set(...components as [number, number, number]);
   };
-  const rows = 5, cols = 4;
+  const rows = 4, cols = 4;
   for (let r = 5; r < 116; r += 1.8) for (let c = 0; c < 96; c += 1.35) {
     const rootR = r + random() * 1.7, rootC = c + random() * 1.3;
     sample(source, rootR, rootC, point);
     if (Math.hypot(Math.abs(point.x) - 0.059, point.y - 0.171, point.z - 0.129) < 0.012) continue;
     const featherLength = point.y > 0.10 ? 1.5 : 2.8 + random() * 1.2;
     const width = 0.90 + random() * 0.32, base = positions.length / 3;
-    const tone = 0.995 + random() * 0.01;
+    const tone = 0.96 + random() * 0.08;
     for (let i = 0; i <= rows; i++) for (let j = 0; j <= cols; j++) {
       const t = i / rows, x = j / cols * 2 - 1;
       const taper = Math.pow(Math.sin(Math.PI * (0.12 + t * 0.88)), 0.65);
@@ -121,7 +123,7 @@ function contourPlumage(body: THREE.BufferGeometry, random: () => number) {
       point.addScaledVector(normal, lift);
       positions.push(point.x, point.y, point.z); uv.push(j / cols, t);
       surfaceNormals.push(normal.x, normal.y, normal.z);
-      const edge = 1 - Math.abs(x) * 0.008;
+      const edge = 1 - Math.abs(x) * 0.035 + 0.065 * t * t;
       tints.push(color.r * edge, color.g * edge, color.b * edge);
       if (i < rows && j < cols) {
         const a = base + i * (cols + 1) + j;
@@ -210,9 +212,10 @@ export function createRobin() {
     // Longer primaries below three shingled rows of shorter coverts.
     for (let j = 0; j < 12; j++) {
       const t = j / 11;
-      transform.position.set(side * (0.124 + 0.004 * Math.sin(t * Math.PI)), 0.039 - t * 0.077, -0.025);
-      orient(new THREE.Vector3(-side * 0.06, -0.40 + t * 0.12, -1), new THREE.Vector3(side, 0.1, 0));
-      transform.scale.set(0.026, 0.153 - t * 0.025, 0.009);
+      const arch = Math.sin(Math.PI * t);
+      transform.position.set(side * (0.113 + 0.010 * arch), 0.047 - t * 0.082, -0.037 + t * 0.026);
+      orient(new THREE.Vector3(-side * (0.27 + 0.10 * t), -0.62 + t * 0.42, -1), new THREE.Vector3(side, 0.1, 0));
+      transform.scale.set(0.025, 0.157 - t * 0.058, 0.009);
       transform.updateMatrix(); wings.setMatrixAt(index, transform.matrix);
       color.set('#76654f').multiplyScalar(0.88 + t * 0.16);
       wings.setColorAt(index++, color);
@@ -220,12 +223,13 @@ export function createRobin() {
     for (let row = 0; row < 3; row++) for (let j = 0; j < 9; j++) {
       const t = j / 8;
       const y = 0.072 - t * 0.079 - row * 0.007;
-      const z = 0.008 - row * 0.030;
-      transform.position.set(side * (0.129 + row * 0.001), y, z);
-      orient(new THREE.Vector3(-side * 0.025, -0.45, -1), new THREE.Vector3(side, 0.2, 0.1));
+      const arch = Math.sin(Math.PI * t);
+      const z = -0.006 + 0.028 * arch - row * 0.026;
+      transform.position.set(side * (0.107 + 0.017 * arch + t * 0.007), y, z);
+      orient(new THREE.Vector3(-side * (0.06 + row * 0.04), -0.68 + t * 0.35, -1), new THREE.Vector3(side, 0.2, 0.1));
       transform.scale.set(0.026, 0.048 + row * 0.012, 0.005);
       transform.updateMatrix(); wings.setMatrixAt(index, transform.matrix);
-      color.set(row === 2 ? '#ab9774' : '#8c8062').multiplyScalar(0.94 + rand() * 0.12);
+      color.set(row === 2 ? '#968167' : '#7f7059').multiplyScalar(0.94 + rand() * 0.12);
       wings.setColorAt(index++, color);
     }
   }
