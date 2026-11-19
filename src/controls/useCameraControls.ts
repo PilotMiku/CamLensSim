@@ -208,8 +208,11 @@ export function useCameraControls(
   useEffect(() => {
     if (!enabled) return;
     const handleKeyDown = (event: KeyboardEvent) => {
-      if (event.metaKey || event.ctrlKey) return;
+      if (event.defaultPrevented || event.metaKey || event.ctrlKey) return;
       if (isTypingTarget(event.target)) return;
+      // Preserve Space activation while keeping WASD usable after toolbar clicks.
+      if (event.code === 'Space' && event.target instanceof Element &&
+        event.target.closest('button, summary, [role="button"]')) return;
       if (!MOVEMENT_KEYS.has(event.code)) return;
       flush();
       keys.current.add(event.code);
